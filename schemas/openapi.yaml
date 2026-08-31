@@ -1,0 +1,331 @@
+openapi: 3.1.0
+info:
+  title: Melanin Map agent gateway
+  version: 1.0.0
+  license:
+    name: MIT
+    url: https://github.com/A-Technologies-Holdings/melaninmap-webmcp/blob/main/LICENSE
+  description: |
+    The HTTP surface behind the five WebMCP tools registered by
+    melaninmap.app. Published so an agent author can read the contract without
+    executing the page.
+
+    Every endpoint is POST + JSON, same-origin, and unauthenticated: there are
+    no accounts and no API keys. Identity is an anonymous, session-scoped
+    `installationId` minted in the browser. It exists for attribution
+    continuity, NOT as a credential — see SECURITY.md before you copy this
+    shape, because the server-side controls are the part that matters.
+
+    Two endpoints write. `/agent/action` records an attributed follow-through.
+    `/agent/handoff` creates an attributed journey to a ticketing destination
+    and requires a human confirmation in the page. Both refuse to write without
+    a `recommendationId` the server minted for that same installation, so
+    `/agent/search` is the entry point for every write path.
+servers:
+  # The public agent paths are `/agent/*`, which is what llms.txt advertises and
+  # what this document describes. `vercel.json` rewrites all five to the
+  # `/api/agent/*` handlers, so `https://melaninmap.app/agent/search` resolves.
+  # The page's own client calls `/api/agent/*` directly because it is
+  # same-origin and skips the rewrite; both reach the same handler.
+  - url: https://melaninmap.app
+paths:
+  /agent/search:
+    post:
+      operationId: searchDirectory
+      summary: Search the published Clarksville catalog
+      description: |
+        The only route that mints a `recommendationId`. Rate limited per
+        installation and per originating IP; the IP limit is the one that
+        cannot be rotated away, and it therefore bounds every write below.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [installationId]
+              properties:
+                installationId: { type: string, minLength: 12, maxLength: 128 }
+                query: { type: string, maxLength: 400 }
+                category: { type: string, maxLength: 64 }
+                kind: { type: string, enum: [business, event, all] }
+                limit: { type: integer, minimum: 1, maximum: 20 }
+      responses:
+        "200":
+          description: Published catalog records, plus the recommendation handle.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, recommendationId]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/CatalogItem" }
+                  recommendationId:
+                    type: [string, "null"]
+                    description: Null when the result set is empty — nothing to attribute.
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/UpstreamUnavailable" }
+        "503": { $ref: "#/components/responses/CatalogUnavailable" }
+  /agent/business:
+    post:
+      operationId: getBusiness
+      summary: One published business by externalId
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [externalId]
+              properties:
+                externalId: { type: string, maxLength: 200 }
+      responses:
+        "200":
+          description: Published fields only. Absent fields were never published.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, business]
+                properties:
+                  ok: { const: true }
+                  business: { $ref: "#/components/schemas/BusinessRecord" }
+        "404":
+          description: |
+            No published business for this externalId. A normal outcome, not an
+            error — ids can go stale between a search and a lookup.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Refusal" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /agent/verification:
+    post:
+      operationId: checkVerification
+      summary: Ownership verification status for a listing
+      description: |
+        `not_listed` deliberately covers both "no such id" and "exists but is
+        not publicly exposed". This endpoint never distinguishes them.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [externalId]
+              properties:
+                externalId: { type: string, maxLength: 200 }
+      responses:
+        "200":
+          description: One of three statuses, or a refusal.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [ok, status, passportUrl]
+                    properties:
+                      ok: { const: true }
+                      status: { const: verified }
+                      passportUrl: { type: string, format: uri }
+                  - type: object
+                    required: [ok, status]
+                    properties:
+                      ok: { const: true }
+                      status: { type: string, enum: [not_listed, exposure_disabled] }
+                  - $ref: "#/components/schemas/Refusal"
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /agent/action:
+    post:
+      operationId: recordInterest
+      summary: Record an attributed follow-through
+      description: |
+        Writes. No confirmation card: it discloses nothing to a third party,
+        moves no money, and sends no message. Gating it would train people to
+        click through prompts and make the real gate worthless.
+
+        Requires a recommendation owned by this installation and still in its
+        attribution window. Deduplicated on (recommendationId, action,
+        targetId), so a repeat is a safe no-op rather than a double count.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [installationId, recommendationId, action, targetType, targetId]
+              properties:
+                installationId: { type: string, minLength: 12, maxLength: 128 }
+                recommendationId: { type: string, maxLength: 200 }
+                action: { type: string, enum: [tap, save, directions] }
+                targetType: { type: string, maxLength: 64 }
+                targetId: { type: string, maxLength: 200 }
+      responses:
+        "200":
+          description: |
+            `recorded: false` is a normal outcome, not an error — an expired or
+            already-counted follow-through says so and explains why.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recorded]
+                properties:
+                  recorded: { type: boolean }
+                  reason:
+                    type: string
+                    description: |
+                      Present only when `recorded` is false. These are the
+                      values the endpoint actually emits — `target_not_recommended`
+                      from the membership check, the rest from the write itself.
+                    enum:
+                      - target_not_recommended
+                      - deduplicated
+                      - expired
+                      - recommendation_not_found
+                      - unauthorized_installation
+                      - invalid_target_type
+                      - missing_required_field
+                      - unavailable
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/CatalogUnavailable" }
+  /agent/handoff:
+    post:
+      operationId: requestEventHandoff
+      summary: Create an attributed handoff to a ticketing destination
+      description: |
+        The consequential route. The page calls it only after a human confirms
+        in the consent card, and it refuses without `consentToken`.
+
+        Read SECURITY.md before assuming that field secures anything: it is a
+        fixed literal, so it constrains the agent driving the tool surface, not
+        a script posting here directly. The controls that hold are server-side
+        — an unforgeable `recommendationId`, an allowlisted destination set
+        (no caller-supplied URL, so no open redirect), no money movement, and
+        no personal data in the response.
+
+        Targets ticketed events and tours only. Idempotent on
+        `idempotencyKey`: replaying one returns the same journey with
+        `replayed: true` rather than creating a second.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                [installationId, recommendationId, targetType, targetExternalId, channel, consentToken, idempotencyKey]
+              properties:
+                installationId: { type: string, minLength: 12, maxLength: 128 }
+                recommendationId: { type: string, maxLength: 200 }
+                targetType: { type: string, enum: [event, tour] }
+                targetExternalId: { type: string, maxLength: 200 }
+                channel: { type: string, enum: [event_detail] }
+                consentToken:
+                  type: string
+                  const: user_confirmed_v1
+                  description: Audit record of an on-page confirmation. Not a credential.
+                idempotencyKey:
+                  type: string
+                  pattern: "^[A-Za-z0-9:_-]{12,128}$"
+                  description: Minted once per consent-card open, not per attempt.
+      responses:
+        "200":
+          description: A signed, short-lived handoff, or a refusal code.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [ok, journeyId, token, expiresAt, attributionIncluded, replayed]
+                    properties:
+                      ok: { const: true }
+                      journeyId: { type: string }
+                      token: { type: string, description: Short-lived signed attribution token. }
+                      expiresAt: { type: integer, description: Epoch milliseconds. }
+                      attributionIncluded: { type: boolean }
+                      replayed: { type: boolean }
+                  - $ref: "#/components/schemas/Refusal"
+        "400":
+          description: Bad request, or `consent_missing` when the token is absent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Refusal" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/UpstreamUnavailable" }
+components:
+  responses:
+    BadRequest:
+      description: Malformed or oversized request.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Refusal" }
+    RateLimited:
+      description: Rate limited, per installation or per originating IP.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Refusal" }
+    CatalogUnavailable:
+      description: |
+        The backend answered but could not serve the request. The relay
+        preserves this status verbatim rather than flattening it to 502, so a
+        validating client must expect it: 502 means the gateway could not reach
+        the backend, 503 means the backend itself is degraded.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Refusal" }
+    UpstreamUnavailable:
+      description: The gateway could not reach its backend.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Refusal" }
+  schemas:
+    Refusal:
+      type: object
+      required: [ok, code]
+      properties:
+        ok: { const: false }
+        code:
+          type: string
+          enum:
+            - invalid_json
+            - invalid_request
+            - invalid_installation_id
+            - payload_too_large
+            - method_not_allowed
+            - consent_missing
+            - rate_limited
+            - not_found
+            - expired
+            - handoff_unavailable
+            - upstream_unavailable
+            - handler_crash
+    CatalogItem:
+      type: object
+      required: [type, externalId, name]
+      properties:
+        type: { type: string, enum: [business, event] }
+        externalId: { type: string }
+        name: { type: string }
+        category: { type: string }
+        city: { type: string }
+        verifiedBadge:
+          type: boolean
+          description: |
+            True only for a live, source-verified certification. Never
+            purchasable. Absent or false means unverified, which is not a
+            judgement about the business.
+    BusinessRecord:
+      type: object
+      properties:
+        externalId: { type: string }
+        name: { type: string }
+        description: { type: string }
+        category: { type: string }
+        location: { type: string }
+        website: { type: string }
+        imageUrl: { type: string }

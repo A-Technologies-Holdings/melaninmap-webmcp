@@ -1,0 +1,53 @@
+{
+  "name": "@melaninmap/webmcp-consent",
+  "version": "1.0.0",
+  "description": "A consent gate for WebMCP tools: consequential agent tool calls suspend until a human confirms in the page.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src",
+    "schemas",
+    "examples",
+    "reference",
+    "scripts",
+    "README.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "webmcp",
+    "mcp",
+    "model-context",
+    "agent",
+    "consent",
+    "human-in-the-loop"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/A-Technologies-Holdings/melaninmap-webmcp.git"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "prepack": "npm run build",
+    "check:contract": "node scripts/check-contract-matches-reference.mjs",
+    "check:smoke": "node scripts/smoke.mjs && node scripts/smoke-partial.mjs",
+    "check": "npm run typecheck && npm run check:contract && npm run build && npm run check:smoke"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./schemas/tools": "./schemas/melaninmap.tools.json",
+    "./package.json": "./package.json"
+  },
+  "sideEffects": false
+}

@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melaninmap.app/schemas/melaninmap.tools.json",
+  "title": "Melanin Map agent tool contract",
+  "description": "The five tools melaninmap.app registers on the Web Model Context API. Published so an agent author can read the contract without executing the page, and so the descriptions can be reviewed as the interface they are.",
+  "site": "https://melaninmap.app",
+  "version": "1.0.0",
+  "tools": [
+    {
+      "name": "search_black_owned_directory",
+      "readOnly": true,
+      "description": "Search Melanin Map's published directory of Black-owned businesses, events, and tours in Clarksville, Tennessee. Results are published directory records. The response includes a recommendationId, which subsequent record_interest and request_event_handoff calls require.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Free-text search terms.",
+            "maxLength": 400
+          },
+          "category": {
+            "type": "string",
+            "description": "Optional category filter.",
+            "maxLength": 64
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "business",
+              "event",
+              "all"
+            ],
+            "description": "Optional record kind filter; defaults to \"all\"."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results to return.",
+            "minimum": 1,
+            "maximum": 20
+          }
+        },
+        "required": []
+      },
+      "endpoint": "/agent/search",
+      "outputSchema": {
+        "$ref": "./openapi.yaml#/paths/~1agent~1search/post/responses/200/content/application~1json/schema"
+      }
+    },
+    {
+      "name": "get_business_details",
+      "readOnly": true,
+      "description": "Get the published directory record for one listing by its externalId, as returned by search_black_owned_directory. Returns only fields the listing has published.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "externalId": {
+            "type": "string",
+            "description": "The listing's externalId from search_black_owned_directory.",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "externalId"
+        ]
+      },
+      "endpoint": "/agent/business",
+      "outputSchema": {
+        "$ref": "./openapi.yaml#/paths/~1agent~1business/post/responses/200/content/application~1json/schema"
+      }
+    },
+    {
+      "name": "check_ownership_verification",
+      "readOnly": true,
+      "description": "Check the ownership verification status of a directory listing. Returns one of three statuses: \"verified\" (a live, source-verified certification with a public Passport URL), \"not_listed\" (no publicly listed verification for this id), or \"exposure_disabled\" (public Passport exposure is currently switched off site-wide). Verification is never purchasable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "externalId": {
+            "type": "string",
+            "description": "The listing's externalId from search_black_owned_directory.",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "externalId"
+        ]
+      },
+      "endpoint": "/agent/verification",
+      "outputSchema": {
+        "$ref": "./openapi.yaml#/paths/~1agent~1verification/post/responses/200/content/application~1json/schema"
+      }
+    },
+    {
+      "name": "record_interest",
+      "readOnly": false,
+      "consentRequired": false,
+      "consentNote": "Records attribution only. No third-party disclosure, no money, no message sent \u2014 nothing a person would want to be asked about first. Gating it would train people to click through consent prompts, which is the failure mode that makes the real gate worthless.",
+      "description": "Record an attributed follow-through (tap, save, or directions) for a recommendation previously returned by search_black_owned_directory. Safe to call once per genuine user intent; it no-ops if the recommendation has expired.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "recommendationId": {
+            "type": "string",
+            "description": "The recommendationId from a prior search_black_owned_directory response."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "tap",
+              "save",
+              "directions"
+            ],
+            "description": "The kind of follow-through the person expressed."
+          },
+          "targetType": {
+            "type": "string",
+            "description": "The record type of the target, from the search item."
+          },
+          "targetId": {
+            "type": "string",
+            "description": "The target's externalId, from the search item."
+          }
+        },
+        "required": [
+          "recommendationId",
+          "action",
+          "targetType",
+          "targetId"
+        ]
+      },
+      "endpoint": "/agent/action",
+      "outputSchema": {
+        "$ref": "./openapi.yaml#/paths/~1agent~1action/post/responses/200/content/application~1json/schema"
+      }
+    },
+    {
+      "name": "request_event_handoff",
+      "readOnly": false,
+      "consentRequired": true,
+      "consentNote": "Hands the person to a third-party ticketing destination with an attribution token attached. A person should be told where they are being sent and what travels with them. This tool suspends until a human confirms in the page.",
+      "description": "Start a tracked hand-off to an event's or tour's official ticketing destination. A visible confirmation card is shown to the person using this browser, and the hand-off proceeds only if they confirm it; if they decline, no hand-off request is made and the result is { ok: false, code: \"user_declined\" }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "recommendationId": {
+            "type": "string",
+            "description": "The recommendationId from a prior search_black_owned_directory response."
+          },
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "event",
+              "tour"
+            ],
+            "description": "Whether the target is an event or a tour."
+          },
+          "targetExternalId": {
+            "type": "string",
+            "description": "The event's or tour's externalId, from the search item."
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "event_detail"
+            ],
+            "description": "The hand-off channel. The web agent lane always uses \"event_detail\"."
+          }
+        },
+        "required": [
+          "recommendationId",
+          "targetType",
+          "targetExternalId",
+          "channel"
+        ]
+      },
+      "endpoint": "/agent/handoff",
+      "outputSchema": {
+        "$ref": "./openapi.yaml#/paths/~1agent~1handoff/post/responses/200/content/application~1json/schema"
+      }
+    }
+  ],
+  "resultEnvelopes": {
+    "refusal": {
+      "description": "Returned when a consequential tool did not run because consent was not given. The model is told what happened and what not to do next.",
+      "shape": {
+        "ok": false,
+        "code": "consent_declined | consent_timeout | consent_closed",
+        "message": "string"
+      }
+    },
+    "failure": {
+      "description": "Stable public codes only. Internal reasons never reach the model.",
+      "shape": {
+        "ok": false,
+        "code": "invalid_arguments | rate_limited | not_found | expired | consent_missing | handoff_unavailable | tool_unavailable | network_error"
+      }
+    }
+  },
+  "outputSchemaNote": "Output shapes live in openapi.yaml and are referenced from each tool's outputSchema by JSON pointer rather than duplicated here. One source of truth: a copy would drift, and a drifted contract is worse than no published contract at all."
+}
