@@ -225,4 +225,7 @@ bounded redemption, public carve-out, and security-review corrections).
 
 ## License
 
-MIT. See [LICENSE](./LICENSE).
+MIT. See [LICENSE](./LICENSE). Contributions use the Developer Certificate of
+Origin described in [CONTRIBUTING.md](./CONTRIBUTING.md). The code license does
+not license the Melanin Map or Big Mama names and brand assets; see
+[TRADEMARKS.md](./TRADEMARKS.md).

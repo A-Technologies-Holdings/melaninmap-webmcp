@@ -1,0 +1,9 @@
+steps:
+  - label: ":typescript: WebMCP package gate"
+    key: "ci"
+    command:
+      - "npm ci --ignore-scripts"
+      - "npm run check"
+    agents:
+      queue: "linux-small"
+    timeout_in_minutes: 10

@@ -11,6 +11,11 @@ Include what is affected, how to reproduce it if that is safe to share, and
 your impact assessment. We aim to acknowledge valid reports within a few
 business days.
 
+We follow coordinated disclosure. After acknowledging a report, we will work
+with the reporter on remediation and public disclosure timing, with a target
+maximum embargo of 90 days unless active exploitation or user safety requires
+an earlier disclosure. We will credit reporters who request attribution.
+
 ## Threat model
 
 The threat model for a WebMCP tool surface is not the same as for a normal web
@@ -129,9 +134,11 @@ without a limiter in front of it.
 
 ## Scope
 
-In scope: the code in this repository, and the tool contract in
-`schemas/melaninmap.tools.json` as deployed at melaninmap.app.
+In scope: the code in this repository, the public `/agent/*` HTTP endpoints,
+and the tool contract in `schemas/melaninmap.tools.json` as deployed by
+Melanin Map.
 
-Out of scope: denial-of-service testing against production without prior
-coordination, findings that require physical device access, and third-party
-services outside our control.
+Out of scope: volumetric testing of public rate limits, findings that require a
+compromised browser, denial-of-service testing against production without
+prior coordination, findings that require physical device access, and
+third-party services outside our control.
