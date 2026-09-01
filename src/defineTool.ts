@@ -30,11 +30,26 @@ import type { ModelContextTool, ModelContextToolResult } from "./types.js";
  * returns `undefined`, not a string. That would hand the host a text block
  * whose `text` is not a string, breaking our own `ModelContextTextContent`
  * contract and turning a SUCCESSFUL call into a malformed result. Anything
- * that does not serialise becomes `null`, which is valid JSON and reads to a
- * model as "this worked and returned nothing".
+ * that does not serialise — a value JSON.stringify skips, and equally one it
+ * THROWS on — becomes `null`, which is valid JSON and reads to a model as
+ * "this worked and returned nothing".
  */
 export function toToolResult(value: unknown): ModelContextToolResult {
-  const text = JSON.stringify(value);
+  // JSON.stringify does not merely return undefined for unserialisable input —
+  // it THROWS on a bigint or a circular object. This call sits inside the
+  // execute try/catch, so a throw here would be mapped to `tool_unavailable`
+  // even though the call SUCCEEDED. On a consequential tool the side effect has
+  // already happened by then, and reporting it as unavailable invites the model
+  // or the person to retry a handoff that already went through.
+  //
+  // So serialisation failure is contained here, and the promised valid-JSON
+  // fallback is emitted instead.
+  let text: string | undefined;
+  try {
+    text = JSON.stringify(value);
+  } catch {
+    text = undefined;
+  }
   return {
     content: [{ type: "text", text: typeof text === "string" ? text : "null" }],
   };

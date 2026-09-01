@@ -1,10 +1,9 @@
 /**
  * On-page human confirmation card for agent-initiated hand-offs.
  *
- * Deliberately plain product voice — a confirmation prompt is not the place
- * for personality. Styling follows the host site's existing consent banner
- * (surface #17110D, gold #C9963B, rounded-2xl, uppercase tracking buttons);
- * restyle freely, the behavior below is the part to keep.
+ * Neutral product voice (this is NOT Big Mama). Visual idiom copied from
+ * components/ConsentBanner.tsx: surface #17110D, gold #C9963B on bg #0D0907,
+ * borders rgba(201,150,59,0.2), rounded-2xl, uppercase tracking buttons.
  *
  * The consent token constant lives ONLY in this module and leaves it only
  * through resolvePendingConsentRequest() when the person clicks Confirm —
@@ -37,9 +36,24 @@ function decline() {
 }
 
 function confirm() {
+  // Open the destination placeholder inside the click handler, while the
+  // transient user activation is still valid — the redemption round trips
+  // that follow would otherwise leave a later window.open popup-blocked on
+  // strict browsers. The registrar navigates this tab on success and closes
+  // it on failure; a refused open (null) falls back to a URL-in-result.
+  let navigationHandle: Window | null = null;
+  try {
+    navigationHandle = window.open("", "_blank");
+    if (navigationHandle) {
+      navigationHandle.opener = null;
+    }
+  } catch {
+    navigationHandle = null;
+  }
   resolvePendingConsentRequest({
     status: "confirmed",
     consentToken: CONSENT_TOKEN,
+    navigationHandle,
   });
 }
 

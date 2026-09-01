@@ -18,19 +18,36 @@
 export type HandoffConsentRequest = {
   /** Human-readable name of the event/tour shown on the card. */
   targetName: string;
-  targetType: string;
 };
 
 /** What the card answers with; the bridge enriches a confirmation below. */
 export type HandoffConsentAnswer =
-  { status: "confirmed"; consentToken: string } | { status: "declined" };
+  | {
+      status: "confirmed";
+      consentToken: string;
+      /**
+       * Placeholder tab opened SYNCHRONOUSLY inside the Confirm click so the
+       * transient user activation is spent while it is still valid — by the
+       * time the create/redeem round trips finish, a direct window.open would
+       * be popup-blocked on strict browsers. Null when the browser refused
+       * even the synchronous open.
+       */
+      navigationHandle: Window | null;
+    }
+  | { status: "declined" };
 
 export type HandoffConsentResolution =
-  | { status: "confirmed"; consentToken: string; idempotencyKey: string }
+  | {
+      status: "confirmed";
+      consentToken: string;
+      idempotencyKey: string;
+      navigationHandle: Window | null;
+    }
   | { status: "declined" };
 
 export type HandoffConsentOutcome =
-  HandoffConsentResolution | { status: "busy" };
+  | HandoffConsentResolution
+  | { status: "busy" };
 
 export const HANDOFF_CONSENT_TIMEOUT_MS = 60_000;
 
@@ -38,10 +55,9 @@ type PendingConsent = {
   request: HandoffConsentRequest;
   /**
    * Minted ONCE per consent request and carried on the confirmation. The
-   * server derives the journey identity from this key, and the create budget
-   * is tight — a fresh key per network attempt would make retries
-   * non-idempotent and burn the rate limit, so the consent lifecycle owns the
-   * key, not the network layer.
+   * Convex journey id derives from this key, and the web create budget is
+   * tight — a fresh key per network attempt would make retries non-idempotent
+   * and burn the rate limit, so the consent lifecycle owns the key.
    */
   idempotencyKey: string;
   resolve: (outcome: HandoffConsentResolution) => void;

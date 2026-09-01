@@ -18,9 +18,10 @@ info:
 
     Two endpoints write. `/agent/action` records an attributed follow-through.
     `/agent/handoff` creates an attributed journey to a ticketing destination
-    and requires a human confirmation in the page. Both refuse to write without
-    a `recommendationId` the server minted for that same installation, so
-    `/agent/search` is the entry point for every write path.
+    after `/agent/handoff-consent` exchanges the page's visible confirmation
+    signal for a short-lived, operation-bound server proof. Both write lanes
+    refuse without a `recommendationId` the server minted for that same
+    installation, so `/agent/search` is the entry point for every write path.
 servers:
   # The public agent paths are `/agent/*`, which is what llms.txt advertises and
   # what this document describes. `vercel.json` rewrites all five to the
@@ -47,10 +48,25 @@ paths:
               required: [installationId]
               properties:
                 installationId: { type: string, minLength: 12, maxLength: 128 }
-                query: { type: string, maxLength: 400 }
+                query:
+                  type: string
+                  maxLength: 400
+                  description: |
+                    Accepted up to 400 characters — the length the relay and
+                    agentSearchBodySchema enforce. Matching uses only the first
+                    160 (AGENT_SEARCH_MAX_QUERY_CHARS); the remainder is
+                    truncated, not refused. Published at 400 rather than 160
+                    deliberately: capping the contract at the truncation point
+                    would reject requests the server accepts and answers.
                 category: { type: string, maxLength: 64 }
                 kind: { type: string, enum: [business, event, all] }
-                limit: { type: integer, minimum: 1, maximum: 20 }
+                limit:
+                  type: integer
+                  minimum: 1
+                  # The relay clamps to 16 (MAX_RESULT_LIMIT) and Convex caps
+                  # the recommendation at the same 16, so a documented 20 would
+                  # promise a page size the endpoint silently never returns.
+                  maximum: 16
       responses:
         "200":
           description: Published catalog records, plus the recommendation handle.
@@ -67,9 +83,14 @@ paths:
                     type: [string, "null"]
                     description: Null when the result set is empty — nothing to attribute.
         "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "502": { $ref: "#/components/responses/UpstreamUnavailable" }
         "503": { $ref: "#/components/responses/CatalogUnavailable" }
+        "504": { $ref: "#/components/responses/RelayedUpstreamStatus" }
+        default: { $ref: "#/components/responses/RelayedUpstreamStatus" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+        "500": { $ref: "#/components/responses/HandlerError" }
   /agent/business:
     post:
       operationId: getBusiness
@@ -82,7 +103,7 @@ paths:
               type: object
               required: [externalId]
               properties:
-                externalId: { type: string, maxLength: 200 }
+                externalId: { type: string, minLength: 1, maxLength: 200 }
       responses:
         "200":
           description: Published fields only. Absent fields were never published.
@@ -102,6 +123,10 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Refusal" }
         "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "502": { $ref: "#/components/responses/UpstreamUnavailable" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+        "500": { $ref: "#/components/responses/HandlerError" }
   /agent/verification:
     post:
       operationId: checkVerification
@@ -117,7 +142,7 @@ paths:
               type: object
               required: [externalId]
               properties:
-                externalId: { type: string, maxLength: 200 }
+                externalId: { type: string, minLength: 1, maxLength: 200 }
       responses:
         "200":
           description: One of three statuses, or a refusal.
@@ -135,9 +160,14 @@ paths:
                     required: [ok, status]
                     properties:
                       ok: { const: true }
-                      status: { type: string, enum: [not_listed, exposure_disabled] }
+                      status:
+                        { type: string, enum: [not_listed, exposure_disabled] }
                   - $ref: "#/components/schemas/Refusal"
         "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "502": { $ref: "#/components/responses/UpstreamUnavailable" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+        "500": { $ref: "#/components/responses/HandlerError" }
   /agent/action:
     post:
       operationId: recordInterest
@@ -156,13 +186,26 @@ paths:
           application/json:
             schema:
               type: object
-              required: [installationId, recommendationId, action, targetType, targetId]
+              required:
+                [installationId, recommendationId, action, targetType, targetId]
               properties:
                 installationId: { type: string, minLength: 12, maxLength: 128 }
-                recommendationId: { type: string, maxLength: 200 }
+                recommendationId: { type: string, minLength: 1, maxLength: 200 }
                 action: { type: string, enum: [tap, save, directions] }
-                targetType: { type: string, maxLength: 64 }
-                targetId: { type: string, maxLength: 200 }
+                targetType:
+                  type: string
+                  description: |
+                    Closed set, enforced by the relay and again by the backend
+                    body schema. A value outside it is a 400, never a write —
+                    so it is published as an enum rather than a bare string.
+                  enum:
+                    - story
+                    - business
+                    - event
+                    - place
+                    - google_place
+                    - professional
+                targetId: { type: string, minLength: 1, maxLength: 200 }
       responses:
         "200":
           description: |
@@ -191,22 +234,95 @@ paths:
                       - missing_required_field
                       - unavailable
         "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/UpstreamUnavailable" }
         "503": { $ref: "#/components/responses/CatalogUnavailable" }
+        "504": { $ref: "#/components/responses/RelayedUpstreamStatus" }
+        default: { $ref: "#/components/responses/RelayedUpstreamStatus" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+        "500": { $ref: "#/components/responses/HandlerError" }
+  /agent/handoff-consent:
+    post:
+      operationId: mintEventHandoffConsentProof
+      summary: Exchange visible confirmation for an operation-bound proof
+      description: |
+        Called only after the page's visible confirmation card resolves. The
+        static `consentToken` is an audit signal, not a credential. This route
+        authenticates the installation through a short-lived server-minted AI
+        session, applies independent IP and installation ceilings, validates
+        the exact recommendation/target operation, and returns a short-lived
+        single-use proof bound to those inputs.
+
+        The proof prevents direct calls to the ledger writer and cannot be
+        replayed for a different target or idempotency key. It does not, and a
+        browser protocol cannot, cryptographically prove that a human finger
+        performed the tap.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                [
+                  installationId,
+                  recommendationId,
+                  targetExternalId,
+                  channel,
+                  consentToken,
+                  idempotencyKey,
+                ]
+              properties:
+                installationId: { type: string, minLength: 12, maxLength: 128 }
+                recommendationId: { type: string, minLength: 1, maxLength: 200 }
+                targetExternalId: { type: string, minLength: 1, maxLength: 200 }
+                channel: { type: string, enum: [event_detail] }
+                consentToken:
+                  type: string
+                  const: user_confirmed_v1
+                  description: Audit signal from the visible page card; not a credential.
+                idempotencyKey:
+                  type: string
+                  pattern: "^[A-Za-z0-9:_-]{12,128}$"
+      responses:
+        "200":
+          description: A short-lived operation-bound proof, or a refusal code.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [ok, consentProof, expiresAt, targetType]
+                    properties:
+                      ok: { const: true }
+                      consentProof: { type: string }
+                      expiresAt:
+                        { type: integer, description: Epoch milliseconds. }
+                      targetType:
+                        type: string
+                        enum: [event, tour]
+                        description: Server-governed type from the approved pilot binding; pass it unchanged to /agent/handoff.
+                  - $ref: "#/components/schemas/Refusal"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/UpstreamUnavailable" }
+        "503": { $ref: "#/components/responses/HandoffUnavailable" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+        "500": { $ref: "#/components/responses/HandlerError" }
   /agent/handoff:
     post:
       operationId: requestEventHandoff
       summary: Create an attributed handoff to a ticketing destination
       description: |
-        The consequential route. The page calls it only after a human confirms
-        in the consent card, and it refuses without `consentToken`.
-
-        Read SECURITY.md before assuming that field secures anything: it is a
-        fixed literal, so it constrains the agent driving the tool surface, not
-        a script posting here directly. The controls that hold are server-side
-        — an unforgeable `recommendationId`, an allowlisted destination set
-        (no caller-supplied URL, so no open redirect), no money movement, and
-        no personal data in the response.
+        The consequential writer. The page calls it only after visible
+        confirmation and the `/agent/handoff-consent` exchange. It refuses
+        without both the UI audit marker and a short-lived, single-use server
+        proof bound to the exact installation, recommendation, target, channel,
+        and idempotency key. The Convex writer is internal-only and reachable
+        only through this signed-session, IP- and installation-limited gateway.
 
         Targets ticketed events and tours only. Idempotent on
         `idempotencyKey`: replaying one returns the same journey with
@@ -218,17 +334,31 @@ paths:
             schema:
               type: object
               required:
-                [installationId, recommendationId, targetType, targetExternalId, channel, consentToken, idempotencyKey]
+                [
+                  installationId,
+                  recommendationId,
+                  targetType,
+                  targetExternalId,
+                  channel,
+                  consentToken,
+                  consentProof,
+                  idempotencyKey,
+                ]
               properties:
                 installationId: { type: string, minLength: 12, maxLength: 128 }
-                recommendationId: { type: string, maxLength: 200 }
+                recommendationId: { type: string, minLength: 1, maxLength: 200 }
                 targetType: { type: string, enum: [event, tour] }
-                targetExternalId: { type: string, maxLength: 200 }
+                targetExternalId: { type: string, minLength: 1, maxLength: 200 }
                 channel: { type: string, enum: [event_detail] }
                 consentToken:
                   type: string
                   const: user_confirmed_v1
                   description: Audit record of an on-page confirmation. Not a credential.
+                consentProof:
+                  type: string
+                  minLength: 1
+                  maxLength: 2048
+                  description: Short-lived operation-bound proof from /agent/handoff-consent.
                 idempotencyKey:
                   type: string
                   pattern: "^[A-Za-z0-9:_-]{12,128}$"
@@ -241,12 +371,25 @@ paths:
               schema:
                 oneOf:
                   - type: object
-                    required: [ok, journeyId, token, expiresAt, attributionIncluded, replayed]
+                    required:
+                      [
+                        ok,
+                        journeyId,
+                        token,
+                        expiresAt,
+                        attributionIncluded,
+                        replayed,
+                      ]
                     properties:
                       ok: { const: true }
                       journeyId: { type: string }
-                      token: { type: string, description: Short-lived signed attribution token. }
-                      expiresAt: { type: integer, description: Epoch milliseconds. }
+                      token:
+                        {
+                          type: string,
+                          description: Short-lived signed attribution token.,
+                        }
+                      expiresAt:
+                        { type: integer, description: Epoch milliseconds. }
                       attributionIncluded: { type: boolean }
                       replayed: { type: boolean }
                   - $ref: "#/components/schemas/Refusal"
@@ -255,35 +398,261 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Refusal" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
         "429": { $ref: "#/components/responses/RateLimited" }
         "502": { $ref: "#/components/responses/UpstreamUnavailable" }
+        "503": { $ref: "#/components/responses/HandoffUnavailable" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+        "500": { $ref: "#/components/responses/HandlerError" }
+  /agent/handoff-open:
+    post:
+      operationId: openEventHandoff
+      summary: Redeem a handoff token for its ticketing destination
+      description: |
+        The second half of a confirmed handoff, and the one a copied
+        integration is most likely to miss. `/agent/handoff` returns a signed
+        token, not a URL; this route redeems that token and returns the
+        destination the person actually needs. A tool that stops after the
+        create call leaves a confirmed person holding an opaque token.
+
+        The token is the capability here: it is server-signed and bound to one
+        journey, and the journey must belong to the calling installation.
+        Provenance is therefore inherited — only `/agent/handoff` mints a token,
+        and that route already requires an agent-minted recommendation.
+
+        Idempotent on `idempotencyKey`; replaying a redeemed handoff returns the
+        same destination with `replayed: true`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [installationId, token, idempotencyKey]
+              properties:
+                installationId: { type: string, minLength: 12, maxLength: 128 }
+                token:
+                  type: string
+                  minLength: 1
+                  maxLength: 2048
+                  description: The signed token returned by /agent/handoff.
+                idempotencyKey:
+                  type: string
+                  # 160, not the create route's 128, and deliberately so: the
+                  # client redeems with `<create idempotencyKey>:open`, so a
+                  # maximum-length create key arrives here at 133 characters.
+                  # Publishing 128 rejected a request the handler accepts.
+                  pattern: "^[A-Za-z0-9:_-]{12,160}$"
+      responses:
+        "200":
+          description: The redeemed destination, or a refusal code.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/RedeemedHandoff"
+                  - $ref: "#/components/schemas/Refusal"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { $ref: "#/components/responses/UpstreamUnavailable" }
+        "503": { $ref: "#/components/responses/HandoffUnavailable" }
+        "405": { $ref: "#/components/responses/MethodNotAllowed" }
+        "500": { $ref: "#/components/responses/HandlerError" }
 components:
   responses:
+    MethodNotAllowed:
+      description: |
+        Every agent endpoint is POST-only and answers anything else with this
+        envelope. Documented because a generated client that follows a stale
+        link or retries with GET should recognise the response rather than
+        treat it as an outage.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Refusal" }
+    HandlerError:
+      description: |
+        The handler itself threw. Every endpoint wraps its body in a last-resort
+        catch so a crash still returns JSON rather than an empty body or an HTML
+        error page — which means clients can and do see this shape.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Refusal" }
     BadRequest:
-      description: Malformed or oversized request.
+      description: Malformed request.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Refusal" }
+    PayloadTooLarge:
+      description: Request body exceeded the endpoint's 8 KiB limit.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Refusal" }
     RateLimited:
-      description: Rate limited, per installation or per originating IP.
+      description: |
+        Rate limited, per installation or per originating IP.
+
+        Two different bodies reach a client here, because the limit can be hit
+        at either hop and each reports in its own shape. The upstream form uses
+        an UPPERCASE code and carries no `ok`, so it is not a `Refusal`.
       content:
         application/json:
-          schema: { $ref: "#/components/schemas/Refusal" }
+          schema:
+            oneOf:
+              # Relayed from the backend limiter.
+              - type: object
+                required: [error, code]
+                properties:
+                  error: { type: string }
+                  code: { type: string, const: RATE_LIMIT }
+                  retryAfterMs: { type: integer }
+              # Produced by the gateway itself.
+              - $ref: "#/components/schemas/Refusal"
     CatalogUnavailable:
       description: |
         The backend answered but could not serve the request. The relay
         preserves this status verbatim rather than flattening it to 502, so a
         validating client must expect it: 502 means the gateway could not reach
         the backend, 503 means the backend itself is degraded.
+
+        The BODY is relayed verbatim too, and is not a `Refusal` — the two
+        routes report degradation in their own shapes. Documented as they
+        actually are rather than as we would prefer them: a client that assumed
+        `Refusal` here would reject a normal outage.
       content:
         application/json:
-          schema: { $ref: "#/components/schemas/Refusal" }
+          schema:
+            oneOf:
+              # /agent/search
+              - type: object
+                required: [error]
+                properties:
+                  error: { type: string }
+              # /agent/action
+              - type: object
+                required: [recorded]
+                properties:
+                  recorded: { const: false }
+                  reason: { type: string, const: unavailable }
+    RelayedUpstreamStatus:
+      description: |
+        A status relayed verbatim from Convex. `shouldNormalizeConvexGatewayBody`
+        is `!ok && !isLikelyJson(body)`, and `relayConvexResponse` preserves
+        `response.status`, so the two relaying routes can return ANY upstream
+        failure status — 504 and Cloudflare's 52x among them — with the
+        normalized envelope. Documented as `default` rather than enumerated
+        because the set belongs to the upstream, not to this gateway.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/Refusal"
+              - $ref: "#/components/schemas/RelayedUpstreamFailure"
     UpstreamUnavailable:
-      description: The gateway could not reach its backend.
+      description: |
+        The gateway could not reach its backend. TWO body shapes, and a client
+        must accept both: the handler's own refusal (`ok: false`), and — on
+        `/agent/search` and `/agent/action`, the two relaying routes — the
+        envelope `relayConvexResponse` substitutes when Convex fails with a
+        non-JSON body, which carries `error` and `code` but NO `ok`.
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/Refusal"
+              - $ref: "#/components/schemas/RelayedUpstreamFailure"
+    HandoffUnavailable:
+      description: The backend received the request but could not complete the handoff operation.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Refusal" }
   schemas:
+    RelayedUpstreamFailure:
+      description: |
+        The normalization `relayConvexResponse` substitutes when Convex (behind
+        Cloudflare) fails with a NON-JSON body — typically an HTML error page.
+        It preserves the upstream status and replaces the body, so this is not a
+        Refusal: it has no `ok` field, and validating it against Refusal rejects
+        a real gateway outage.
+      type: object
+      required: [error, code]
+      properties:
+        error: { type: string, description: Human-readable outage message. }
+        code: { const: upstream_unavailable }
+    ToolRefusal:
+      description: |
+        Refusals a TOOL can return that no endpoint ever emits, because they
+        happen in the page before or instead of a request. Published because a
+        client validating tool results against endpoint schemas alone would
+        reject ordinary outcomes as malformed.
+
+        `network_error` — the request never completed; every tool can return it.
+        `invalid_arguments` — the model's arguments failed the tool's own parse;
+        returned by get_business_details, check_verification_status,
+        record_interest and request_event_handoff.
+        `busy` / `user_declined` — consent outcomes, so request_event_handoff
+        only. A decline is a normal result, not an error.
+      type: object
+      required: [ok, code]
+      properties:
+        ok: { const: false }
+        code:
+          # Deliberately NOT a closed enum. `errorEnvelope` relays
+          # `AgentGatewayApiError.code`, which `postJson` builds as
+          # `payload.code || payload.error || <fallback>` — and `payload.error`
+          # is a free-form server string, so the set is genuinely open. An enum
+          # here would be a lie that makes validating clients reject real
+          # results. The known values:
+          #
+          #   Client-side, no request made:
+          #     network_error      — every tool
+          #     invalid_arguments  — get_business_details, check_verification_status,
+          #                          record_interest, request_event_handoff
+          #     busy, user_declined — consent outcomes; request_event_handoff only
+          #
+          #   Relayed from the gateway: any code in Refusal, plus RATE_LIMIT
+          #   from the backend limiter, plus the fallbacks `rate_limit` (429)
+          #   and `agent_gateway_failed` (other non-2xx).
+          type: string
+    RedeemedHandoff:
+      type: object
+      required: [ok, destinationUrl, attributionIncluded, replayed, sequence]
+      properties:
+        ok: { const: true }
+        destinationUrl:
+          type: string
+          description: Allowlisted ticketing destination. Never caller-supplied.
+        attributionIncluded: { type: boolean }
+        replayed: { type: boolean }
+        sequence: { type: integer }
+    HandoffToolResult:
+      description: |
+        What the `request_event_handoff` TOOL resolves to, which is not the
+        `/agent/handoff` response. The tool creates the handoff, redeems the
+        token via /agent/handoff-open, and returns the redeemed result plus
+        `navigated` — a client-side field saying whether the page already took
+        the person to the destination, so the agent knows whether it still
+        needs to surface the link.
+
+        anyOf, NOT oneOf: since `ToolRefusal.code` accepts any string it now
+        subsumes `Refusal`, so a refusal like `{ ok: false, code: "not_found" }`
+        matches both branches. Under `oneOf` — exactly one — that is a
+        validation failure, which would reject the very results the extra
+        branch was added to admit. Both branches are kept because each
+        documents something: Refusal the server vocabulary, ToolRefusal the
+        open client/relayed set.
+      anyOf:
+        - allOf:
+            - $ref: "#/components/schemas/RedeemedHandoff"
+            - type: object
+              required: [navigated]
+              properties:
+                navigated:
+                  type: boolean
+                  description: True when the page navigated the person itself.
+        - $ref: "#/components/schemas/Refusal"
+        - $ref: "#/components/schemas/ToolRefusal"
+
     Refusal:
       type: object
       required: [ok, code]
@@ -301,6 +670,8 @@ components:
             - rate_limited
             - not_found
             - expired
+            - invalid_token
+            - destination_unavailable
             - handoff_unavailable
             - upstream_unavailable
             - handler_crash
@@ -316,9 +687,11 @@ components:
         verifiedBadge:
           type: boolean
           description: |
-            True only for a live, source-verified certification. Never
-            purchasable. Absent or false means unverified, which is not a
-            judgement about the business.
+            True only when the public catalog marks this listing's data as
+            verified-by-Melanin-Map freshness. This is a listing-freshness
+            signal, not ownership certification. Use
+            check_ownership_verification for the separately governed,
+            non-purchasable ownership status.
     BusinessRecord:
       type: object
       properties:

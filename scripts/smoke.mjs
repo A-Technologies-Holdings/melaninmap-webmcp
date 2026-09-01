@@ -195,6 +195,38 @@ check("the confirmation and its audit token reach the action", () => {
   assert.equal(received.auditToken, "audit-abc");
 });
 
+// JSON.stringify THROWS on a bigint or a circular object — it does not merely
+// return undefined. That call lives inside the execute try/catch, so an
+// unguarded throw would report a SUCCESSFUL consequential action as
+// `tool_unavailable` and invite a retry of a handoff that already happened.
+const circular = {};
+circular.self = circular;
+for (const [label, badValue] of [
+  ["bigint", 1n],
+  ["circular object", circular],
+]) {
+  let ran = false;
+  const result = json(
+    await defineConsequentialTool({
+      name: "unserialisable",
+      description: "d",
+      inputSchema: schema,
+      parseArgs: parse,
+      consent: async () => ({ decision: "confirmed" }),
+      describeConsent: () => ({ title: "t", detail: "d", confirmLabel: "Go" }),
+      execute: async () => {
+        ran = true;
+        return badValue;
+      },
+    }).execute({}),
+  );
+  check(`a successful ${label} result is not reported as a failure`, () => {
+    assert.equal(ran, true, "the action must have run");
+    // null, not an error envelope: the side effect happened.
+    assert.equal(result, null);
+  });
+}
+
 // --- registration ----------------------------------------------------------
 check("registration is a silent no-op with no host present", () =>
   assert.deepEqual(registerAgentTools([read]), {

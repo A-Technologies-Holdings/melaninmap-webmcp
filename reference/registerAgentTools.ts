@@ -10,9 +10,11 @@
 
 import {
   AgentGatewayApiError,
+  openAgentHandoff,
   recordAgentAction,
   requestAgentBusiness,
   requestAgentHandoff,
+  requestAgentHandoffConsent,
   requestAgentSearch,
   requestAgentVerification,
   type AgentSearchItem,
@@ -20,6 +22,7 @@ import {
 import { requestHandoffConsent } from "./consentBridge";
 import { ensureHandoffConsentCardMounted } from "./HandoffConsentCard";
 import { getAgentInstallationId } from "./installation";
+import { retryOnceOnTransient } from "./retryOnce";
 import type {
   DetectedModelContext,
   ModelContextProvideContext,
@@ -93,6 +96,81 @@ function errorEnvelope(error: unknown): { ok: false; code: string } {
   return { ok: false, code: "network_error" };
 }
 
+function isRetryableGatewayError(error: unknown): boolean {
+  return !(error instanceof AgentGatewayApiError) || error.status >= 500;
+}
+
+/**
+ * Steer the placeholder tab the consent card opened during the Confirm click
+ * to the redeemed destination; fall back to a direct open (which strict
+ * browsers may block post-await) only when no placeholder exists. Returns
+ * whether a navigation was actually started.
+ */
+function navigateHandoffDestination(
+  handle: Window | null,
+  destinationUrl: string,
+): boolean {
+  try {
+    if (handle && !handle.closed) {
+      handle.location.href = destinationUrl;
+      return true;
+    }
+  } catch {
+    closeNavigationHandle(handle);
+  }
+  try {
+    return (
+      typeof window !== "undefined" &&
+      window.open(destinationUrl, "_blank", "noopener") !== null
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Close a placeholder tab whose hand-off did not complete. Never throws. */
+function closeNavigationHandle(handle: Window | null): void {
+  try {
+    if (handle && !handle.closed) {
+      handle.close();
+    }
+  } catch {
+    // The tab may already be gone or inaccessible; nothing to clean up.
+  }
+}
+
+/**
+ * Redemption is installation-owned and idempotent. Retry one transient edge
+ * failure with the same token and idempotency key so a successfully-created,
+ * human-confirmed handoff is not stranded by a single 502 or network drop.
+ * Client errors and rate limits are truthful refusals and are never retried.
+ */
+async function openConfirmedHandoff(
+  args: Parameters<typeof openAgentHandoff>[0],
+): ReturnType<typeof openAgentHandoff> {
+  try {
+    return await openAgentHandoff(args);
+  } catch (error) {
+    if (!isRetryableGatewayError(error)) throw error;
+    return openAgentHandoff(args);
+  }
+}
+
+/**
+ * Creation is operation-bound and idempotent. Retry one transient edge failure
+ * with the exact same consent proof and idempotency key so a committed journey
+ * can return its original token after a dropped success response. Client
+ * errors and rate limits remain truthful refusals and are never retried.
+ */
+async function createConfirmedHandoff(
+  args: Parameters<typeof requestAgentHandoff>[0],
+): ReturnType<typeof requestAgentHandoff> {
+  return retryOnceOnTransient(
+    () => requestAgentHandoff(args),
+    isRetryableGatewayError,
+  );
+}
+
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -112,10 +190,14 @@ const searchTool: ModelContextTool = {
     properties: {
       query: {
         type: "string",
-        description: "Free-text search terms.",
+        // Mirrors agentSearchBodySchema and the relay: over-length fails 400.
+        maxLength: 400,
+        description:
+          "Free-text search terms. Accepted up to 400 characters, but only the first 160 are used for matching — anything after that is ignored rather than rejected.",
       },
       category: {
         type: "string",
+        maxLength: 64,
         description: "Optional category filter.",
       },
       kind: {
@@ -125,6 +207,10 @@ const searchTool: ModelContextTool = {
       },
       limit: {
         type: "number",
+        // The relay clamps to MAX_RESULT_LIMIT; advertise the real ceiling so a
+        // model does not ask for a page size it silently will not get.
+        minimum: 1,
+        maximum: 16,
         description: "Maximum number of results to return.",
       },
     },
@@ -159,6 +245,9 @@ const businessDetailsTool: ModelContextTool = {
     properties: {
       externalId: {
         type: "string",
+        // Both relays reject over 200 before the request leaves the edge.
+        minLength: 1,
+        maxLength: 200,
         description:
           "The listing's externalId from search_black_owned_directory.",
       },
@@ -188,6 +277,9 @@ const verificationTool: ModelContextTool = {
     properties: {
       externalId: {
         type: "string",
+        // Both relays reject over 200 before the request leaves the edge.
+        minLength: 1,
+        maxLength: 200,
         description:
           "The listing's externalId from search_black_owned_directory.",
       },
@@ -220,6 +312,9 @@ const recordInterestTool: ModelContextTool = {
     properties: {
       recommendationId: {
         type: "string",
+        // Both relays reject over 200 before the request leaves the edge.
+        minLength: 1,
+        maxLength: 200,
         description:
           "The recommendationId from a prior search_black_owned_directory response.",
       },
@@ -230,10 +325,24 @@ const recordInterestTool: ModelContextTool = {
       },
       targetType: {
         type: "string",
-        description: "The record type of the target, from the search item.",
+        // Closed set, matching ALLOWED_TARGET_TYPES in the relay and the
+        // backend body schema. Advertised so a model cannot produce a tool call
+        // that is valid per the schema yet always answered with 400.
+        // Narrower than the endpoint's six-value union ON PURPOSE. The relay
+        // and backend accept all six, but this tool's targets can only come
+        // from search_black_owned_directory, which mints business and event
+        // rows and nothing else; the backend then matches the target against
+        // the items that search returned. Publishing the other four would make
+        // calls schema-valid that can only ever come back
+        // `target_not_recommended`.
+        enum: ["business", "event"],
+        description:
+          'The record type of the target, from the search item. Only "business" and "event" exist here: search_black_owned_directory mints no other type, and the backend matches the target against the items that search actually returned.',
       },
       targetId: {
         type: "string",
+        minLength: 1,
+        maxLength: 200,
         description: "The target's externalId, from the search item.",
       },
     },
@@ -267,9 +376,6 @@ const recordInterestTool: ModelContextTool = {
     }
   },
 };
-
-const HANDOFF_TARGET_TYPES = ["event", "tour"] as const;
-type HandoffTargetType = (typeof HANDOFF_TARGET_TYPES)[number];
 
 /**
  * externalId → display name from recent search responses, so the consent card
@@ -318,16 +424,16 @@ const handoffTool: ModelContextTool = {
     properties: {
       recommendationId: {
         type: "string",
+        // Both relays reject over 200 before the request leaves the edge.
+        minLength: 1,
+        maxLength: 200,
         description:
           "The recommendationId from a prior search_black_owned_directory response.",
       },
-      targetType: {
-        type: "string",
-        enum: ["event", "tour"],
-        description: "Whether the target is an event or a tour.",
-      },
       targetExternalId: {
         type: "string",
+        minLength: 1,
+        maxLength: 200,
         description: "The event's or tour's externalId, from the search item.",
       },
       channel: {
@@ -337,19 +443,13 @@ const handoffTool: ModelContextTool = {
           'The hand-off channel. The web agent lane always uses "event_detail".',
       },
     },
-    required: ["recommendationId", "targetType", "targetExternalId", "channel"],
+    required: ["recommendationId", "targetExternalId", "channel"],
   },
   annotations: { readOnlyHint: false },
   execute: async (args) => {
     const recommendationId = optionalString(args.recommendationId);
-    const targetType = optionalString(args.targetType);
     const targetExternalId = optionalString(args.targetExternalId);
-    if (
-      !recommendationId ||
-      !targetExternalId ||
-      !targetType ||
-      !HANDOFF_TARGET_TYPES.includes(targetType as HandoffTargetType)
-    ) {
+    if (!recommendationId || !targetExternalId) {
       return toToolResult({ ok: false, code: "invalid_arguments" });
     }
     // The journey channel is a closed server-side union and the persisted
@@ -358,7 +458,7 @@ const handoffTool: ModelContextTool = {
     const channel = "event_detail";
 
     const targetName = await lookupTargetName(targetExternalId);
-    const outcome = await requestHandoffConsent({ targetName, targetType });
+    const outcome = await requestHandoffConsent({ targetName });
 
     if (outcome.status === "busy") {
       return toToolResult({ ok: false, code: "busy" });
@@ -368,17 +468,60 @@ const handoffTool: ModelContextTool = {
     }
 
     try {
-      const response = await requestAgentHandoff({
-        installationId: getAgentInstallationId(),
+      const installationId = getAgentInstallationId();
+      const consent = await requestAgentHandoffConsent({
+        installationId,
         recommendationId,
-        targetType: targetType as HandoffTargetType,
         targetExternalId,
         channel,
         consentToken: outcome.consentToken,
         idempotencyKey: outcome.idempotencyKey,
       });
-      return toToolResult(response);
+      if (consent.ok !== true) {
+        closeNavigationHandle(outcome.navigationHandle);
+        return toToolResult(consent);
+      }
+      const response = await createConfirmedHandoff({
+        installationId,
+        recommendationId,
+        targetType: consent.targetType,
+        targetExternalId,
+        channel,
+        consentToken: outcome.consentToken,
+        consentProof: consent.consentProof,
+        idempotencyKey: outcome.idempotencyKey,
+      });
+      if (response.ok !== true) {
+        closeNavigationHandle(outcome.navigationHandle);
+        return toToolResult(response);
+      }
+      const opened = await openConfirmedHandoff({
+        installationId,
+        token: response.token,
+        idempotencyKey: `${outcome.idempotencyKey}:open`,
+      });
+      // The person explicitly confirmed this hand-off, so take them to the
+      // redeemed destination the way the in-app client does. The consent card
+      // opened a placeholder tab synchronously inside the Confirm click
+      // (transient user activation would be spent by the time these round
+      // trips finish); navigate it now, or fall back to a direct open where
+      // no placeholder exists. The URL stays in the tool result either way,
+      // and `navigated` tells the agent whether the person still needs the
+      // link surfaced.
+      let navigated = false;
+      if (opened.ok === true && typeof opened.destinationUrl === "string") {
+        navigated = navigateHandoffDestination(
+          outcome.navigationHandle,
+          opened.destinationUrl,
+        );
+      } else {
+        closeNavigationHandle(outcome.navigationHandle);
+      }
+      return toToolResult(
+        opened.ok === true ? { ...opened, navigated } : opened,
+      );
     } catch (error) {
+      closeNavigationHandle(outcome.navigationHandle);
       return toToolResult(errorEnvelope(error));
     }
   },
@@ -403,10 +546,6 @@ export function registerAgentTools(): void {
     recordInterestTool,
     handoffTool,
   ];
-  // Incremental (`registerTool`) is preferred over bulk (`provideContext`)
-  // when a browser offers both: only the incremental call takes the per-tool
-  // `{ signal }` option, so bulk would quietly drop the scoped registration.
-  // `src/register.ts` makes the same choice for the same reason.
   // Registration is not atomic and WebMCP offers no rollback. If a later tool
   // fails after an earlier one landed, the earlier one is still live in the
   // host — so the failure path must still mark, or a later call would register

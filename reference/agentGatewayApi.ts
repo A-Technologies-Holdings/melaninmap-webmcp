@@ -1,18 +1,15 @@
 /**
  * Thin fetch client for the same-origin agent gateway endpoints.
  *
- * Two conventions worth copying:
+ * Error idiom copied from client/src/lib/webDemoApi.ts: non-2xx responses
+ * throw AgentGatewayApiError with `payload.code || payload.error`, 429 is
+ * special-cased as a rate limit. 200-with-`ok:false` envelopes are returned as
+ * typed unions, not thrown.
  *
- * - A non-2xx response throws `AgentGatewayApiError` carrying the server's
- *   stable public code; 429 is special-cased as a rate limit.
- * - A 200 response with `ok: false` is NOT an error. It is a refusal the model
- *   should read and reason about — the person declined, the recommendation
- *   expired, the feature is off — so it comes back as a typed union rather
- *   than an exception. Throwing here would turn an answerable outcome into an
- *   opaque dead end.
- *
- * The endpoint paths are the deployed ones; see schemas/openapi.yaml for the
- * request and response shapes.
+ * Response types are deliberately duplicated here rather than imported from
+ * shared/agentGateway.ts — that module is owned by the server lane and
+ * parallel editing would race; the small duplication is accepted and reviewed
+ * later.
  */
 
 export class AgentGatewayApiError extends Error {
@@ -83,6 +80,25 @@ export type AgentHandoffResponse =
       expiresAt: number;
       attributionIncluded: boolean;
       replayed: boolean;
+    }
+  | AgentGatewayRefusal;
+
+export type AgentHandoffConsentResponse =
+  | {
+      ok: true;
+      consentProof: string;
+      expiresAt: number;
+      targetType: "event" | "tour";
+    }
+  | AgentGatewayRefusal;
+
+export type AgentHandoffOpenResponse =
+  | {
+      ok: true;
+      destinationUrl: string;
+      attributionIncluded: boolean;
+      replayed: boolean;
+      sequence: number;
     }
   | AgentGatewayRefusal;
 
@@ -169,10 +185,28 @@ export async function recordAgentAction(args: {
   });
 }
 
+/** Exchange the visible card's UI signal for an operation-bound server proof. */
+export async function requestAgentHandoffConsent(args: {
+  installationId: string;
+  recommendationId: string;
+  targetExternalId: string;
+  channel: "event_detail";
+  consentToken: string;
+  idempotencyKey: string;
+}): Promise<AgentHandoffConsentResponse> {
+  return postJson<AgentHandoffConsentResponse>("/api/agent/handoff-consent", {
+    installationId: args.installationId,
+    recommendationId: args.recommendationId,
+    targetExternalId: args.targetExternalId,
+    channel: args.channel,
+    consentToken: args.consentToken,
+    idempotencyKey: args.idempotencyKey,
+  });
+}
+
 /**
- * Must only be called with a consentToken obtained from the consent card's
- * resolution (see consentBridge.ts) — the token constant is private to the
- * card module, so execute code cannot fabricate it.
+ * The static card marker is only a UI signal. The ledger accepts the
+ * short-lived, one-time server proof returned by requestAgentHandoffConsent.
  */
 export async function requestAgentHandoff(args: {
   installationId: string;
@@ -181,6 +215,7 @@ export async function requestAgentHandoff(args: {
   targetExternalId: string;
   channel: string;
   consentToken: string;
+  consentProof: string;
   /** Minted once per consent-card open (consentBridge) so retries replay. */
   idempotencyKey: string;
 }): Promise<AgentHandoffResponse> {
@@ -191,6 +226,20 @@ export async function requestAgentHandoff(args: {
     targetExternalId: args.targetExternalId,
     channel: args.channel,
     consentToken: args.consentToken,
+    consentProof: args.consentProof,
+    idempotencyKey: args.idempotencyKey,
+  });
+}
+
+/** Redeem a signed, installation-owned handoff into its attributed URL. */
+export async function openAgentHandoff(args: {
+  installationId: string;
+  token: string;
+  idempotencyKey: string;
+}): Promise<AgentHandoffOpenResponse> {
+  return postJson<AgentHandoffOpenResponse>("/api/agent/handoff-open", {
+    installationId: args.installationId,
+    token: args.token,
     idempotencyKey: args.idempotencyKey,
   });
 }

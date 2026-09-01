@@ -1,13 +1,15 @@
 # Reference implementation
 
-This is the **actual code running on [melaninmap.app](https://melaninmap.app)**,
-copied here with its monorepo-internal imports flattened so the directory stands
-alone. It is provided as a worked example, not as a library — the reusable
-pattern lives in [`../src`](../src).
+This is the **pre-deployment application implementation prepared for
+[melaninmap.app](https://melaninmap.app)**, copied here with its
+monorepo-internal imports flattened so the directory stands alone. It is
+provided as a worked example, not as proof that the release-gated handoff is
+live and not as a library — the reusable pattern lives in [`../src`](../src).
 
 | File | What it is |
 | --- | --- |
-| `registerAgentTools.ts` | The five deployed tools and the feature-detected registration. |
+| `registerAgentTools.ts` | The five pre-deployment tools and the feature-detected registration. |
+| `retryOnce.ts` | The bounded transient retry used to recover a dropped idempotent handoff response. |
 | `consentBridge.ts` | Non-React ↔ React bridge: the registrar awaits a human answer. One pending request at a time, 60-second auto-decline. |
 | `HandoffConsentCard.tsx` | The confirmation card itself. Holds the consent token constant. |
 | `agentGatewayApi.ts` | Fetch client for the `/api/agent/*` endpoints. |

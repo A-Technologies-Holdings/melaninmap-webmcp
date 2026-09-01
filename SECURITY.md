@@ -38,10 +38,16 @@ This is the one people get wrong, so it is worth stating plainly.
 
 **A consent token is not a credential.** If your page sends
 `{"consentToken": "user_confirmed"}` after a tap, a script can send the same
-field without one. This is not a flaw you can patch with a better constant — it
-is a property of a browser talking to your own public endpoint. Anything the
-page can send, a script can send. Publishing your client code, as we do here,
-does not create this exposure; it only makes it obvious.
+field without one. Our page therefore exchanges that UI signal for a
+short-lived server proof bound to the exact installation, recommendation,
+target, channel, and idempotency key. The proof is single-use for a distinct
+create, the ledger writer is internal-only, and both the proof and create
+routes have network-origin plus installation ceilings.
+
+That closes the direct-writer bypass and bounds scripted work; it still does
+not cryptographically prove a human finger tapped the card. A script controlling
+the same browser session can request the proof too. Publishing your client code,
+as we do here, does not create that residual — it makes the boundary explicit.
 
 So do not put the security boundary there. Put it where the server can actually
 verify something:
@@ -49,6 +55,11 @@ verify something:
 - **Bind actions to server-minted state the caller could not invent.** Our
   handoff requires a `recommendationId` that the server minted, in an earlier
   request, bound to that caller's installation. A caller cannot forge one.
+- **Put the write behind a server-owned gateway.** The public browser never
+  calls the Convex writer. It obtains a signed session, crosses independent IP
+  and installation ceilings, and presents a short-lived operation-bound proof
+  to an internal mutation. A script may still request a proof, but it cannot
+  bypass the bounded gateway or reuse that proof for a different operation.
 - **Restrict the destination set.** Handoffs resolve only to allowlisted,
   founder-reviewed ticketing destinations. There is no caller-supplied URL, so
   there is no open redirect and no arbitrary third-party disclosure.
@@ -82,9 +93,9 @@ verify something:
   attribution token for an already-public listing. That is the single most
   effective control on the list, and it is a design decision, not a mitigation.
 
-Treat the consent token as what it is: an audit record that a confirmation
-surface was shown and answered, useful in a log and in a dispute, and not
-useful as authorization.
+Treat the consent token as what it is: a UI audit signal, not authorization.
+Treat the server proof as what it is too: authorization for one bounded
+operation, not proof of human presence.
 
 ### 3. Attribution poisoning
 

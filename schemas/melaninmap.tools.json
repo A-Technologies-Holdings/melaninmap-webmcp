@@ -1,6 +1,5 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://melaninmap.app/schemas/melaninmap.tools.json",
   "title": "Melanin Map agent tool contract",
   "description": "The five tools melaninmap.app registers on the Web Model Context API. Published so an agent author can read the contract without executing the page, and so the descriptions can be reviewed as the interface they are.",
   "site": "https://melaninmap.app",
@@ -15,7 +14,7 @@
         "properties": {
           "query": {
             "type": "string",
-            "description": "Free-text search terms.",
+            "description": "Free-text search terms. Accepted up to 400 characters, but only the first 160 are used for matching \u2014 anything after that is ignored rather than rejected.",
             "maxLength": 400
           },
           "category": {
@@ -25,25 +24,31 @@
           },
           "kind": {
             "type": "string",
-            "enum": [
-              "business",
-              "event",
-              "all"
-            ],
+            "enum": ["business", "event", "all"],
             "description": "Optional record kind filter; defaults to \"all\"."
           },
           "limit": {
             "type": "number",
             "description": "Maximum number of results to return.",
             "minimum": 1,
-            "maximum": 20
+            "maximum": 16
           }
         },
         "required": []
       },
       "endpoint": "/agent/search",
       "outputSchema": {
-        "$ref": "./openapi.yaml#/paths/~1agent~1search/post/responses/200/content/application~1json/schema"
+        "anyOf": [
+          {
+            "$ref": "./openapi.yaml#/paths/~1agent~1search/post/responses/200/content/application~1json/schema"
+          },
+          {
+            "$ref": "./openapi.yaml#/components/schemas/Refusal"
+          },
+          {
+            "$ref": "./openapi.yaml#/components/schemas/ToolRefusal"
+          }
+        ]
       }
     },
     {
@@ -56,16 +61,25 @@
           "externalId": {
             "type": "string",
             "description": "The listing's externalId from search_black_owned_directory.",
+            "minLength": 1,
             "maxLength": 200
           }
         },
-        "required": [
-          "externalId"
-        ]
+        "required": ["externalId"]
       },
       "endpoint": "/agent/business",
       "outputSchema": {
-        "$ref": "./openapi.yaml#/paths/~1agent~1business/post/responses/200/content/application~1json/schema"
+        "anyOf": [
+          {
+            "$ref": "./openapi.yaml#/paths/~1agent~1business/post/responses/200/content/application~1json/schema"
+          },
+          {
+            "$ref": "./openapi.yaml#/components/schemas/Refusal"
+          },
+          {
+            "$ref": "./openapi.yaml#/components/schemas/ToolRefusal"
+          }
+        ]
       }
     },
     {
@@ -78,16 +92,22 @@
           "externalId": {
             "type": "string",
             "description": "The listing's externalId from search_black_owned_directory.",
+            "minLength": 1,
             "maxLength": 200
           }
         },
-        "required": [
-          "externalId"
-        ]
+        "required": ["externalId"]
       },
       "endpoint": "/agent/verification",
       "outputSchema": {
-        "$ref": "./openapi.yaml#/paths/~1agent~1verification/post/responses/200/content/application~1json/schema"
+        "anyOf": [
+          {
+            "$ref": "./openapi.yaml#/paths/~1agent~1verification/post/responses/200/content/application~1json/schema"
+          },
+          {
+            "$ref": "./openapi.yaml#/components/schemas/ToolRefusal"
+          }
+        ]
       }
     },
     {
@@ -101,36 +121,42 @@
         "properties": {
           "recommendationId": {
             "type": "string",
-            "description": "The recommendationId from a prior search_black_owned_directory response."
+            "description": "The recommendationId from a prior search_black_owned_directory response.",
+            "minLength": 1,
+            "maxLength": 200
           },
           "action": {
             "type": "string",
-            "enum": [
-              "tap",
-              "save",
-              "directions"
-            ],
+            "enum": ["tap", "save", "directions"],
             "description": "The kind of follow-through the person expressed."
           },
           "targetType": {
             "type": "string",
-            "description": "The record type of the target, from the search item."
+            "description": "The record type of the target, from the search item. Only \"business\" and \"event\" exist here: search_black_owned_directory mints no other type, and the backend matches the target against the items that search actually returned.",
+            "enum": ["business", "event"]
           },
           "targetId": {
             "type": "string",
-            "description": "The target's externalId, from the search item."
+            "description": "The target's externalId, from the search item.",
+            "minLength": 1,
+            "maxLength": 200
           }
         },
-        "required": [
-          "recommendationId",
-          "action",
-          "targetType",
-          "targetId"
-        ]
+        "required": ["recommendationId", "action", "targetType", "targetId"]
       },
       "endpoint": "/agent/action",
       "outputSchema": {
-        "$ref": "./openapi.yaml#/paths/~1agent~1action/post/responses/200/content/application~1json/schema"
+        "anyOf": [
+          {
+            "$ref": "./openapi.yaml#/paths/~1agent~1action/post/responses/200/content/application~1json/schema"
+          },
+          {
+            "$ref": "./openapi.yaml#/components/schemas/Refusal"
+          },
+          {
+            "$ref": "./openapi.yaml#/components/schemas/ToolRefusal"
+          }
+        ]
       }
     },
     {
@@ -144,38 +170,27 @@
         "properties": {
           "recommendationId": {
             "type": "string",
-            "description": "The recommendationId from a prior search_black_owned_directory response."
-          },
-          "targetType": {
-            "type": "string",
-            "enum": [
-              "event",
-              "tour"
-            ],
-            "description": "Whether the target is an event or a tour."
+            "description": "The recommendationId from a prior search_black_owned_directory response.",
+            "minLength": 1,
+            "maxLength": 200
           },
           "targetExternalId": {
             "type": "string",
-            "description": "The event's or tour's externalId, from the search item."
+            "description": "The event's or tour's externalId, from the search item.",
+            "minLength": 1,
+            "maxLength": 200
           },
           "channel": {
             "type": "string",
-            "enum": [
-              "event_detail"
-            ],
+            "enum": ["event_detail"],
             "description": "The hand-off channel. The web agent lane always uses \"event_detail\"."
           }
         },
-        "required": [
-          "recommendationId",
-          "targetType",
-          "targetExternalId",
-          "channel"
-        ]
+        "required": ["recommendationId", "targetExternalId", "channel"]
       },
       "endpoint": "/agent/handoff",
       "outputSchema": {
-        "$ref": "./openapi.yaml#/paths/~1agent~1handoff/post/responses/200/content/application~1json/schema"
+        "$ref": "./openapi.yaml#/components/schemas/HandoffToolResult"
       }
     }
   ],
@@ -192,7 +207,7 @@
       "description": "Stable public codes only. Internal reasons never reach the model.",
       "shape": {
         "ok": false,
-        "code": "invalid_arguments | rate_limited | not_found | expired | consent_missing | handoff_unavailable | tool_unavailable | network_error"
+        "code": "invalid_arguments | rate_limited | not_found | expired | consent_missing | invalid_token | destination_unavailable | handoff_unavailable | tool_unavailable | network_error"
       }
     }
   },

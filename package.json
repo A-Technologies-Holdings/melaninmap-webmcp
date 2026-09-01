@@ -47,7 +47,8 @@
       "default": "./dist/index.js"
     },
     "./schemas/tools": "./schemas/melaninmap.tools.json",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./schemas/openapi": "./schemas/openapi.yaml"
   },
   "sideEffects": false
 }

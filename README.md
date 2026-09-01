@@ -19,16 +19,20 @@ You cannot forget the gate, because `defineConsequentialTool` has no code path
 to the action that does not go through it. There is no bypass flag and no
 trusted-caller escape hatch.
 
-It is extracted from the agent layer on [melaninmap.app](https://melaninmap.app),
-where it gates ticket handoffs for Black-owned businesses, events, and tours in
-Clarksville, Tennessee.
+It is extracted from the pre-deployment agent layer prepared for
+[melaninmap.app](https://melaninmap.app). The private application keeps ticket
+handoffs disabled until the exact production path is deployed and verified
+with an approved Clarksville event or tour and its authority-backed Passport.
 
-## Install
+## Use from source
 
-No runtime dependencies. TypeScript is the only devDependency, for the build.
+No npm-registry release is claimed yet. Install directly from the public
+repository, or clone it and run `npm run check` before linking it locally. The
+runtime has no dependencies; TypeScript is the only devDependency for the
+build.
 
 ```bash
-npm install @melaninmap/webmcp-consent
+npm install github:A-Technologies-Holdings/melaninmap-webmcp
 ```
 
 ```ts
@@ -112,9 +116,10 @@ const handoff = defineConsequentialTool({
 registerAgentTools([search, handoff]);
 ```
 
-`registerAgentTools` is fully feature-detected. In every browser shipping today
-it is a silent no-op that costs one property read. Load it lazily after your app
-mounts: a registrar that can break the host page is worse than no registrar.
+`registerAgentTools` is fully feature-detected. In any browser without either
+proposed registrar API it is a silent no-op that costs one property read. Load
+it lazily after your app mounts: a registrar that can break the host page is
+worse than no registrar.
 
 ## Writing tool descriptions
 
@@ -141,15 +146,17 @@ surface without a human in the loop. That is its whole job and it does that job
 completely.
 
 It does **not** authenticate the human to your server. Any endpoint your page
-can call, a script can also call — including with whatever consent field your
-page sends. A consent token is an audit record and a UX contract. It is not an
-authorization credential, and a package that told you otherwise would be
-selling you a feeling.
+can call, a script controlling the same valid session can also call. A consent
+token is an audit record and a UX contract, not a credential. Our server
+exchanges it for a short-lived, single-use proof bound to one exact handoff and
+keeps the ledger writer internal behind signed-session, IP, and installation
+ceilings. That authorizes one bounded operation; it still is not
+cryptographic proof that a human finger performed the tap.
 
 Your server still needs its own defenses. [SECURITY.md](./SECURITY.md) has the
 threat model and the specific controls we run behind this.
 
-## The deployed contract
+## The pre-deployment contract
 
 - [`schemas/melaninmap.tools.json`](./schemas/melaninmap.tools.json) — the five
   tools as registered: descriptions, input schemas, which gate on consent and
@@ -157,17 +164,19 @@ threat model and the specific controls we run behind this.
 - [`schemas/openapi.yaml`](./schemas/openapi.yaml) — the HTTP surface behind
   them. Each tool's `outputSchema` points into this file by JSON pointer rather
   than duplicating the shapes, so the two cannot drift apart.
-- [`reference/`](./reference) — the actual code running on the site, with its
-  internal imports flattened. A worked example, not a library.
+- [`reference/`](./reference) — the application implementation prepared for
+  deployment, with its internal imports flattened. A worked example, not a
+  claim that the gated production route is live.
 
 ## The trust contract
 
 If an agent is going to speak for this data, the terms should be legible to
 whoever is listening.
 
-- **Results are published directory records.** What comes back is what a
-  business published, nothing inferred and nothing scraped. Missing fields were
-  never published; they are not hidden.
+- **Results are Melanin Map-published directory records.** A record may come
+  from a business submission, an administrator, or an editorial seed. Preserve
+  its published source and freshness fields; do not present publication as
+  proof that the business supplied the data or that ownership was verified.
 - **The top verification tier requires source-verified third-party
   certification, and is never purchasable.** No amount of money moves a listing
   from `not_listed` to `verified`. An agent quoting our verification status is
@@ -184,18 +193,14 @@ whoever is listening.
   that our referral was real. It does not say who you are, because we do not
   know.
 
-## How to try it
+## How to try it after deployment
 
-WebMCP is a browser proposal, not a shipped standard, so this needs a client
-that implements it. Two work today:
-
-**Chrome, behind a flag.** Open `chrome://flags`, enable the Prompt API / Web
-Model Context flags (names move between versions — search "model context"),
-restart, then visit [melaninmap.app](https://melaninmap.app) and ask the
-built-in assistant for Black-owned businesses in Clarksville.
-
-**ChatGPT desktop.** Open melaninmap.app in its browser surface and ask the same
-question. The tools register on page load and the model picks them up.
+The live Melanin Map handoff remains release-gated. Once the production
+deployment and authority evidence are explicitly marked ready, open
+[melaninmap.app](https://melaninmap.app) in a client that implements the WebMCP
+proposal and ask for Black-owned businesses in Clarksville. This repository
+does not claim that a particular browser or assistant currently ships the
+proposal; check the client's own documentation.
 
 Then watch for the part worth watching: ask it to get you tickets to an event.
 The tool call suspends, a confirmation card appears in the page, and nothing
@@ -213,11 +218,10 @@ receipt whether the tap came from the mobile app, a voice concierge, or an
 agent. One contract, three callers.
 
 Built in the private application monorepo
-(`A-Technologies-Holdings/rork-melanin-map-342`) across four pull requests:
-#1713 (the installation-keyed backend lane and the recommendation mint), #1712
-(the HTTP gateway, the registrar, and the consent card), and #1716 (the
-open-source carve-out plus the per-IP rate-limit hardening that the security
-review in `SECURITY.md` describes).
+(`A-Technologies-Holdings/rork-melanin-map-342`) across #1713 (the
+installation-keyed backend lane and recommendation mint), #1712 (the first HTTP
+gateway, registrar, and consent card), and #1724 (the signed-session boundary,
+bounded redemption, public carve-out, and security-review corrections).
 
 ## License
 
