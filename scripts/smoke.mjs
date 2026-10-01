@@ -43,6 +43,56 @@ check("a read tool is annotated read-only", () =>
   assert.equal(read.annotations.readOnlyHint, true),
 );
 
+// readOnlyHint is derived from the tool kind, not from caller annotations — a
+// consequential tool that claimed readOnlyHint would tell a host the gate is
+// side-effect-free. The derived value must win over spec.annotations.
+check("a read tool cannot be annotated non-read-only", () =>
+  assert.equal(
+    defineReadTool({
+      name: "lie",
+      description: "d",
+      inputSchema: schema,
+      annotations: { readOnlyHint: false, destructiveHint: true },
+      parseArgs: parse,
+      execute: async () => null,
+    }).annotations.readOnlyHint,
+    true,
+  ),
+);
+check("a consequential tool cannot claim readOnlyHint", () =>
+  assert.equal(
+    defineConsequentialTool({
+      name: "lie2",
+      description: "d",
+      inputSchema: schema,
+      annotations: { readOnlyHint: true },
+      parseArgs: parse,
+      consent: async () => ({ decision: "declined" }),
+      describeConsent: () => ({ title: "t", detail: "d", confirmLabel: "Go" }),
+      execute: async () => null,
+    }).annotations.readOnlyHint,
+    false,
+  ),
+);
+
+// The host's execute argument is untyped in practice. A non-object payload is
+// normalized to {} before parseArgs sees it — the parser must never receive a
+// string or array it was not written for.
+let parseSaw;
+await defineReadTool({
+  name: "probe",
+  description: "d",
+  inputSchema: schema,
+  parseArgs: (raw) => {
+    parseSaw = raw;
+    return raw;
+  },
+  execute: async () => null,
+}).execute("definitely-not-an-object");
+check("a non-object raw argument is normalized to {} for parseArgs", () =>
+  assert.deepEqual(parseSaw, {}),
+);
+
 // A side-effect-only execute resolves to undefined, and JSON.stringify(undefined)
 // is undefined — which would put a non-string in a text block and turn a
 // successful call into a malformed result.
@@ -327,6 +377,75 @@ check("an unscoped fallback keeps the flags set on abort", () =>
   assert.deepEqual(registerAgentTools([read]), {
     registered: false,
     reason: "already_registered",
+  }),
+);
+
+// Idempotence is scoped, not global: a different tool set is a different
+// registration, even on the same page. The flag holds a map of scopes, so a
+// second consumer (a widget beside the host app, say) is not locked out by a
+// flag the first consumer set. This host rejects the options bag, so the
+// registration lands via the bare fallback.
+const otherTool = defineReadTool({
+  name: "other",
+  description: "d",
+  inputSchema: schema,
+  parseArgs: parse,
+  execute: async () => null,
+});
+const secondConsumer = registerAgentTools([otherTool]);
+check("a different tool set is a different scope and registers", () => {
+  assert.equal(secondConsumer.registered, true);
+  assert.equal(secondConsumer.style, "incremental");
+});
+check("the same scope stays idempotent", () =>
+  assert.deepEqual(registerAgentTools([otherTool]), {
+    registered: false,
+    reason: "already_registered",
+  }),
+);
+
+// A caller may name the scope explicitly instead of deriving it from names.
+check("an explicit scope dedupes across different tool sets", () => {
+  assert.equal(
+    registerAgentTools([read], { scope: "widget" }).registered,
+    true,
+  );
+  assert.deepEqual(registerAgentTools([otherTool], { scope: "widget" }), {
+    registered: false,
+    reason: "already_registered",
+  });
+});
+
+// navigator.modelContext that exists but exposes no registrar must not mask a
+// working document.modelContext — the candidates are checked independently.
+Object.defineProperty(globalThis, "navigator", {
+  configurable: true,
+  writable: true,
+  value: { modelContext: {} },
+});
+Object.defineProperty(globalThis, "document", {
+  configurable: true,
+  writable: true,
+  value: {
+    modelContext: {
+      provideContext({ tools }) {
+        seen.bulk += tools.length;
+      },
+    },
+  },
+});
+const bulkTool = defineReadTool({
+  name: "bulk_probe",
+  description: "d",
+  inputSchema: schema,
+  parseArgs: parse,
+  execute: async () => null,
+});
+check("falls back to document.modelContext when navigator's is empty", () =>
+  assert.deepEqual(registerAgentTools([bulkTool]), {
+    registered: true,
+    toolCount: 1,
+    style: "bulk",
   }),
 );
 

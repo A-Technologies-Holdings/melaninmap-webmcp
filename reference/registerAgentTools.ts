@@ -84,9 +84,25 @@ function detectModelContext(): DetectedModelContext | null {
   };
 }
 
-/** Single place that shapes every tool result. */
+/**
+ * Single place that shapes every tool result.
+ *
+ * JSON.stringify returns undefined for unserialisable input (undefined,
+ * functions, symbols) and THROWS on a bigint or circular object — so this
+ * must be guarded, or a successful tool call reports a malformed text block
+ * (or, worse, an exception inside the error path turns a completed handoff
+ * into something that looks like it failed and invites a retry).
+ */
 function toToolResult(result: unknown): ModelContextToolResult {
-  return { content: [{ type: "text", text: JSON.stringify(result) }] };
+  let text: string | undefined;
+  try {
+    text = JSON.stringify(result);
+  } catch {
+    text = undefined;
+  }
+  return {
+    content: [{ type: "text", text: typeof text === "string" ? text : "null" }],
+  };
 }
 
 function errorEnvelope(error: unknown): { ok: false; code: string } {
@@ -206,7 +222,7 @@ const searchTool: ModelContextTool = {
         description: 'Optional record kind filter; defaults to "all".',
       },
       limit: {
-        type: "number",
+        type: "integer",
         // The relay clamps to MAX_RESULT_LIMIT; advertise the real ceiling so a
         // model does not ask for a page size it silently will not get.
         minimum: 1,
@@ -554,19 +570,15 @@ export function registerAgentTools(): void {
   let anyRegistered = false;
   try {
     if (modelContext.registerTool) {
-      const signal =
-        typeof AbortController !== "undefined"
-          ? new AbortController().signal
-          : undefined;
       for (const tool of tools) {
-        try {
-          // Pass { signal } for implementations that support scoped
-          // registration; retry without options if the options bag is
-          // rejected.
-          modelContext.registerTool(tool, signal ? { signal } : undefined);
-        } catch {
-          modelContext.registerTool(tool);
-        }
+        // Bare call: a { signal } option only scopes registration to a
+        // signal's lifetime when the CALLER owns the AbortController — a
+        // controller nobody can reach is page-lifetime registration with
+        // extra steps. If this module later gains an owner-driven lifetime
+        // (route unmount, lane teardown), mint the controller at that owner
+        // and pass { signal } here, falling back to the bare call for hosts
+        // that reject the options bag.
+        modelContext.registerTool(tool);
         anyRegistered = true;
       }
     } else if (modelContext.provideContext) {

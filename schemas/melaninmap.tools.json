@@ -28,7 +28,7 @@
             "description": "Optional record kind filter; defaults to \"all\"."
           },
           "limit": {
-            "type": "number",
+            "type": "integer",
             "description": "Maximum number of results to return.",
             "minimum": 1,
             "maximum": 16
@@ -196,18 +196,17 @@
   ],
   "resultEnvelopes": {
     "refusal": {
-      "description": "Returned when a consequential tool did not run because consent was not given. The model is told what happened and what not to do next.",
+      "description": "Returned when a consequential tool did not run because consent was not given or could not be collected. The model is told what happened and what not to do next.",
       "shape": {
         "ok": false,
-        "code": "consent_declined | consent_timeout | consent_closed",
-        "message": "string"
+        "code": "user_declined | busy"
       }
     },
     "failure": {
-      "description": "Stable public codes only. Internal reasons never reach the model.",
+      "description": "Stable public codes only. Internal reasons never reach the model. The relayed set is open: the gateway may also return any Refusal code from openapi.yaml, plus rate_limit and agent_gateway_failed fallbacks.",
       "shape": {
         "ok": false,
-        "code": "invalid_arguments | rate_limited | not_found | expired | consent_missing | invalid_token | destination_unavailable | handoff_unavailable | tool_unavailable | network_error"
+        "code": "invalid_arguments | rate_limited | rate_limit | not_found | expired | consent_missing | invalid_token | destination_unavailable | handoff_unavailable | network_error | agent_gateway_failed"
       }
     }
   },

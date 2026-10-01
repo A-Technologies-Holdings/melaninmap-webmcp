@@ -17,8 +17,14 @@
     "SECURITY.md",
     "CONTRIBUTING.md",
     "TRADEMARKS.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "bugs": "https://github.com/A-Technologies-Holdings/melaninmap-webmcp/issues",
+  "homepage": "https://github.com/A-Technologies-Holdings/melaninmap-webmcp#readme",
   "keywords": [
     "webmcp",
     "mcp",
@@ -36,11 +42,13 @@
     "typecheck": "tsc --noEmit",
     "prepack": "npm run build",
     "check:contract": "node scripts/check-contract-matches-reference.mjs",
+    "check:openapi": "node scripts/check-openapi-pointers.mjs",
     "check:smoke": "node scripts/smoke.mjs && node scripts/smoke-partial.mjs",
-    "check": "npm run typecheck && npm run check:contract && npm run build && npm run check:smoke"
+    "check": "npm run typecheck && npm run check:contract && npm run check:openapi && npm run build && npm run check:smoke"
   },
   "devDependencies": {
-    "typescript": "5.6.3"
+    "typescript": "5.6.3",
+    "yaml": "2.9.1"
   },
   "engines": {
     "node": ">=22"
