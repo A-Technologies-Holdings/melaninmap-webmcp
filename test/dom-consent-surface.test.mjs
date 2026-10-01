@@ -1,0 +1,196 @@
+/**
+ * Tests for the reference consent surface in examples/.
+ *
+ * The example is the artifact consumers copy, so its safety contract is tested
+ * for real: initial focus on Decline, dismissal never counting as consent,
+ * prompt serialization, and timeout resolution. A minimal fake DOM stands in
+ * for the browser — no framework, no test-only dependencies, matching the
+ * package's own posture.
+ *
+ * The example compiles into .test-build/ so these run against real JavaScript
+ * on any Node >= 22 — no TypeScript stripping required.
+ *
+ * Run: npm run build:test && npm test
+ */
+
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+class FakeElement {
+  constructor(tagName) {
+    this.tagName = tagName;
+    this.children = [];
+    this.listeners = new Map();
+    this.attributes = new Map();
+    this.textContent = "";
+    this.type = "";
+    this.removed = false;
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, value);
+  }
+
+  addEventListener(type, fn) {
+    const list = this.listeners.get(type) ?? [];
+    list.push(fn);
+    this.listeners.set(type, list);
+  }
+
+  dispatch(type, event = {}) {
+    for (const fn of this.listeners.get(type) ?? []) {
+      fn({ preventDefault() {}, ...event });
+    }
+  }
+
+  append(...nodes) {
+    this.children.push(...nodes);
+  }
+
+  appendChild(node) {
+    this.children.push(node);
+  }
+
+  remove() {
+    this.removed = true;
+  }
+
+  focus() {
+    focused = this;
+  }
+
+  click() {
+    this.dispatch("click");
+  }
+}
+
+// A real <dialog> fires "close" on close(); the surface relies on that to turn
+// programmatic dismissal into `closed` — and on its settled guard to keep a
+// normal finish from reporting `closed` after the fact.
+class FakeDialog extends FakeElement {
+  constructor() {
+    super("dialog");
+    this.open = false;
+  }
+
+  showModal() {
+    this.open = true;
+  }
+
+  close() {
+    this.open = false;
+    this.dispatch("close");
+  }
+}
+
+const dialogs = [];
+let focused = null;
+
+globalThis.document = {
+  body: new FakeElement("body"),
+  createElement(tag) {
+    const el = tag === "dialog" ? new FakeDialog() : new FakeElement(tag);
+    if (el instanceof FakeDialog) dialogs.push(el);
+    return el;
+  },
+};
+globalThis.window = { setTimeout, clearTimeout };
+
+const { domConsentSurface } = await import(
+  "../.test-build/examples/domConsentSurface.js"
+);
+
+const request = {
+  title: "Hold 2 tickets to the Saturday history tour?",
+  detail: "We'll open the ticket page. Nothing is charged here.",
+  confirmLabel: "Open tickets",
+};
+
+function reset() {
+  dialogs.length = 0;
+  focused = null;
+}
+
+// The surface serializes prompts through a promise chain, so a prompt mounts
+// on a microtask, not synchronously with the call.
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+// children arrive in append order: title, detail, confirm, decline.
+const confirmButton = (dialog) => dialog.children[2];
+const declineButton = (dialog) => dialog.children[3];
+
+test("mounts a modal dialog carrying the request's words", async () => {
+  reset();
+  const pending = domConsentSurface(request);
+  await tick();
+  assert.equal(dialogs.length, 1);
+  const dialog = dialogs[0];
+  assert.equal(dialog.open, true);
+  assert.equal(dialog.children[0].textContent, request.title);
+  assert.equal(dialog.children[1].textContent, request.detail);
+  assert.equal(confirmButton(dialog).textContent, request.confirmLabel);
+  declineButton(dialog).click();
+  return pending;
+});
+
+// An agent can open this dialog mid-keystroke. If Confirm held focus, the
+// person's next Enter press would authorise something they never read.
+test("initial focus lands on Decline, never Confirm", async () => {
+  reset();
+  const pending = domConsentSurface(request);
+  await tick();
+  assert.equal(focused, declineButton(dialogs[0]));
+  assert.equal(focused.textContent, "Not now");
+  declineButton(dialogs[0]).click();
+  return pending;
+});
+
+test("a Confirm click resolves with an audit token", async () => {
+  reset();
+  const pending = domConsentSurface(request);
+  await tick();
+  confirmButton(dialogs[0]).click();
+  const result = await pending;
+  assert.equal(result.decision, "confirmed");
+  assert.equal(typeof result.auditToken, "string");
+  assert.ok(result.auditToken.length > 0);
+});
+
+test("a Decline click resolves as declined", async () => {
+  reset();
+  const pending = domConsentSurface(request);
+  await tick();
+  declineButton(dialogs[0]).click();
+  assert.deepEqual(await pending, { decision: "declined" });
+});
+
+test("Escape resolves as closed — dismissal is never consent", async () => {
+  reset();
+  const pending = domConsentSurface(request);
+  await tick();
+  dialogs[0].dispatch("cancel");
+  assert.deepEqual(await pending, { decision: "closed" });
+});
+
+test("an unanswered prompt resolves as timeout rather than hanging", async () => {
+  reset();
+  const result = await domConsentSurface({ ...request, timeoutMs: 30 });
+  assert.deepEqual(result, { decision: "timeout" });
+});
+
+// A model that fires three consequential calls in a row must not stack three
+// dialogs; later prompts queue behind the open one.
+test("concurrent prompts queue instead of stacking", async () => {
+  reset();
+  const first = domConsentSurface(request);
+  const second = domConsentSurface(request);
+  // Let the microtask queue run: only the first prompt may be mounted.
+  await tick();
+  assert.equal(dialogs.length, 1);
+  declineButton(dialogs[0]).click();
+  assert.deepEqual(await first, { decision: "declined" });
+  await tick();
+  assert.equal(dialogs.length, 2);
+  confirmButton(dialogs[1]).click();
+  assert.equal((await second).decision, "confirmed");
+});

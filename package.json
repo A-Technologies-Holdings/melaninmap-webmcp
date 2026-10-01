@@ -12,7 +12,6 @@
     "schemas",
     "examples",
     "reference",
-    "scripts",
     "README.md",
     "SECURITY.md",
     "CONTRIBUTING.md",
@@ -41,12 +40,17 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "prepack": "npm run build",
+    "prepublishOnly": "npm run check",
+    "build:test": "tsc -p tsconfig.test.json",
+    "test": "node --test",
     "check:contract": "node scripts/check-contract-matches-reference.mjs",
     "check:openapi": "node scripts/check-openapi-pointers.mjs",
-    "check:smoke": "node scripts/smoke.mjs && node scripts/smoke-partial.mjs",
-    "check": "npm run typecheck && npm run check:contract && npm run check:openapi && npm run build && npm run check:smoke"
+    "check:pack": "publint && attw --pack . --profile esm-only",
+    "check": "npm run typecheck && npm run check:contract && npm run check:openapi && npm run build && npm run build:test && npm test && npm run check:pack"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "publint": "0.3.24",
     "typescript": "5.6.3",
     "yaml": "2.9.1"
   },
@@ -60,8 +64,7 @@
       "default": "./dist/index.js"
     },
     "./schemas/tools": "./schemas/melaninmap.tools.json",
-    "./package.json": "./package.json",
-    "./schemas/openapi": "./schemas/openapi.yaml"
+    "./package.json": "./package.json"
   },
   "sideEffects": false
 }

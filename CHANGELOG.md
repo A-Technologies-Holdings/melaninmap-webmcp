@@ -18,3 +18,13 @@ First public release.
 - Published contract in `schemas/` (`melaninmap.tools.json`, `openapi.yaml`)
   with mechanical drift checks against the reference registrar.
 - `examples/domConsentSurface` — dependency-free DOM consent surface to copy.
+- `registerAgentTools` forwards only the WebMCP `{ signal }` to the host —
+  the internal `scope` option is idempotence bookkeeping and never leaves
+  the package, so a spec-strict host can no longer fall back to an
+  unscoped bare registration.
+- `node:test` behavioral suite replaces the ad-hoc smoke scripts, including
+  DOM-level tests of `domConsentSurface`'s safety contract (initial focus on
+  Decline, dismissal-as-`closed`, prompt serialization, timeout).
+- `check:pack` lints the published artifact (`publint` +
+  `attw --pack --profile esm-only`), `prepublishOnly` reruns the full gate
+  before npm publish, and `RELEASING.md` documents the release runbook.

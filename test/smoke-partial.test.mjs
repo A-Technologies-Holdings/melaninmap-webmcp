@@ -1,11 +1,11 @@
 /**
- * Partial-registration behavior, in its own process.
+ * Partial-registration behavior, in its own test file.
  *
  * Registration state is module-level and there is deliberately no
  * `unregister()` — aborting a scoped registration is the only way to release
  * it. That makes two "permanently marks registered" cases impossible to run in
- * one process, so this one gets a fresh module instance rather than the main
- * smoke file contorting itself around the ordering.
+ * one process. node:test runs each test file in its own process, so this file
+ * gets the fresh module instance the ordering requires.
  *
  * What it protects: registration is not atomic and WebMCP offers no rollback.
  * If a later tool fails after earlier ones landed, the flags must STAY set —
@@ -14,6 +14,7 @@
  */
 
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import { registerAgentTools } from "../dist/index.js";
 
 const tool = {
@@ -39,23 +40,29 @@ Object.defineProperty(globalThis, "navigator", {
 });
 
 const partial = registerAgentTools([tool, tool]);
-assert.deepEqual(partial, {
-  registered: false,
-  reason: "partial_registration",
-  toolCount: 1,
+
+test("a partial registration reports the exact partial state", () => {
+  assert.deepEqual(partial, {
+    registered: false,
+    reason: "partial_registration",
+    toolCount: 1,
+  });
 });
-console.log("ok   a partial registration reports the exact partial state");
 
 // Three calls, not two: tool 1 lands, tool 2 throws on the optioned call, and
 // the compatibility fallback retries it bare before giving up. That is the
 // mid-loop failure this case exists to cover — one tool live, one not.
-assert.equal(calls, 3, "tool 1 landed, tool 2 failed on both the optioned and bare calls");
-console.log("ok   the failure happened mid-loop, after one tool landed");
-
-assert.deepEqual(registerAgentTools([tool]), {
-  registered: false,
-  reason: "already_registered",
+test("the failure happened mid-loop, after one tool landed", () => {
+  assert.equal(
+    calls,
+    3,
+    "tool 1 landed, tool 2 failed on both the optioned and bare calls",
+  );
 });
-console.log("ok   a partial registration still blocks an unsafe retry");
 
-console.log("\nAll 3 partial-registration assertions passed against dist/.");
+test("a partial registration still blocks an unsafe retry", () => {
+  assert.deepEqual(registerAgentTools([tool]), {
+    registered: false,
+    reason: "already_registered",
+  });
+});
