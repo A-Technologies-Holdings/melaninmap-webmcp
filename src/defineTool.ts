@@ -128,7 +128,14 @@ function safeParseArgs<Args>(
   raw: Record<string, unknown>,
 ): Args | null {
   try {
-    return parseArgs(raw ?? {});
+    // The host is untyped in practice: a conforming runtime sends an object,
+    // but nothing enforces it. A string, array or other non-plain value is
+    // normalized to {} so parseArgs always sees the shape it was written for.
+    return parseArgs(
+      raw !== null && typeof raw === "object" && !Array.isArray(raw)
+        ? raw
+        : {},
+    );
   } catch {
     return null;
   }
@@ -141,7 +148,10 @@ export function defineReadTool<Args>(spec: ToolSpec<Args>): ModelContextTool {
     name: spec.name,
     description: spec.description,
     inputSchema: spec.inputSchema,
-    annotations: { readOnlyHint: true, ...spec.annotations },
+    // readOnlyHint is derived, not caller-set: the spread order makes the
+    // tool kind win over spec.annotations so a read tool can never be marked
+    // non-read-only (and, below, a consequential tool can never claim to be).
+    annotations: { ...spec.annotations, readOnlyHint: true },
     execute: async (raw) => {
       const args = safeParseArgs(spec.parseArgs, raw);
       if (args === null) return toToolResult(INVALID_ARGUMENTS);
@@ -155,7 +165,10 @@ export function defineReadTool<Args>(spec: ToolSpec<Args>): ModelContextTool {
 }
 
 /** The confirmed decision handed to a consequential action. */
-export type ConsentConfirmation = ConsentResult & { decision: "confirmed" };
+export type ConsentConfirmation = Extract<
+  ConsentResult,
+  { decision: "confirmed" }
+>;
 
 export type ConsequentialToolSpec<Args> = Omit<ToolSpec<Args>, "execute"> & {
   /** The confirmation surface. Required — this is the point of the package. */
@@ -190,12 +203,12 @@ export function defineConsequentialTool<Args>(
     name: spec.name,
     description: spec.description,
     inputSchema: spec.inputSchema,
-    annotations: { readOnlyHint: false, ...spec.annotations },
+    annotations: { ...spec.annotations, readOnlyHint: false },
     execute: async (raw) => {
       const args = safeParseArgs(spec.parseArgs, raw);
       if (args === null) return toToolResult(INVALID_ARGUMENTS);
 
-      let decision;
+      let decision: ConsentResult;
       try {
         const request = spec.describeConsent(args);
         decision = await spec.consent({
@@ -213,9 +226,7 @@ export function defineConsequentialTool<Args>(
       }
 
       try {
-        return toToolResult(
-          await spec.execute(args, decision as ConsentConfirmation),
-        );
+        return toToolResult(await spec.execute(args, decision));
       } catch (error) {
         return toToolResult(safeMapError(mapError, error));
       }

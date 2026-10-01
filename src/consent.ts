@@ -48,16 +48,24 @@ export type ConsentRequest = {
   timeoutMs?: number;
 };
 
-export type ConsentResult = {
-  decision: ConsentDecision;
-  /**
-   * Opaque token the caller may forward to its own backend as an audit record
-   * of the confirmation. Present only when `decision === "confirmed"`.
-   *
-   * This is evidence for your logs, not a credential. Do not authorize on it.
-   */
-  auditToken?: string;
-};
+/**
+ * The surface's answer, as a discriminated union: a confirmation is the only
+ * outcome that may carry an audit token, so the type itself makes a token on
+ * a refusal unrepresentable rather than merely undocumented.
+ */
+export type ConsentResult =
+  | {
+      decision: "confirmed";
+      /**
+       * Opaque token the caller may forward to its own backend as an audit
+       * record of the confirmation.
+       *
+       * This is evidence for your logs, not a credential. Do not authorize on
+       * it.
+       */
+      auditToken?: string;
+    }
+  | { decision: "declined" | "timeout" | "closed" };
 
 /**
  * A consent surface. Implement this over whatever your page already uses for
@@ -76,7 +84,9 @@ export type ConsentSurface = (
 export const CONSENT_DEFAULT_TIMEOUT_MS = 120_000;
 
 /** Refusal envelope handed back to the model when consent is not given. */
-export function consentRefusal(decision: ConsentDecision): {
+export function consentRefusal(
+  decision: Exclude<ConsentDecision, "confirmed">,
+): {
   ok: false;
   code: string;
   message: string;

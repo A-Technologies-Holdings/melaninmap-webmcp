@@ -54,8 +54,9 @@ the incremental style so a caller's `AbortSignal` is not silently dropped.
 JavaScript, not raw TypeScript that a consumer's runtime or bundler would have
 to strip for itself.
 
-Or skip the dependency entirely: it is about 350 lines with nothing to
-configure, so copying `src/` into your project is a perfectly good answer.
+Or skip the dependency entirely: it is about 380 lines of code (700 with the
+comments that explain why) with nothing to configure, so copying `src/` into
+your project is a perfectly good answer.
 
 ## Use
 
@@ -120,6 +121,11 @@ registerAgentTools([search, handoff]);
 proposed registrar API it is a silent no-op that costs one property read. Load
 it lazily after your app mounts: a registrar that can break the host page is
 worse than no registrar.
+
+Registration is idempotent per tool set — re-registering the same tools is a
+no-op, while a different set on the same page registers independently. Pass
+`{ scope }` to name a registration explicitly, and `{ signal }` to release the
+scope when an owning controller aborts.
 
 ## Writing tool descriptions
 

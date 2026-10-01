@@ -19,10 +19,14 @@ export {
 export {
   detectModelContext,
   registerAgentTools,
+  type RegisterAgentToolsOptions,
   type RegisterResult,
 } from "./register.js";
 export type {
   DetectedModelContext,
+  ModelContextProvideContext,
+  ModelContextRegisterOptions,
+  ModelContextRegisterTool,
   ModelContextTextContent,
   ModelContextTool,
   ModelContextToolResult,
