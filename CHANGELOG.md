@@ -41,9 +41,17 @@ First public release.
 - `examples/domConsentSurface` ignores untrusted (script-dispatched) Confirm
   clicks, and a click on the backdrop now resolves `closed` as its header
   always claimed.
-- The React reference card rejects untrusted Confirm clicks before opening a
-  tab; reference refusals include no-retry guidance and token documentation
-  describes module hygiene rather than an authentication guarantee.
-- OpenAPI tool mentions are checked for drift. Private registrar parity uses
-  `WEBMCP_LIVE_REGISTRAR` and fails when a configured path is missing.
+- Contract: `ToolRefusal` and the tools.json refusal envelope gain an
+  optional `message` (additive); the reference registrar's `busy` and
+  `user_declined` refusals now carry a do-not-retry instruction.
+- `openapi.yaml` counts seven endpoints and describes the three-call handoff
+  lane; a stale `check_verification_status` tool name is corrected to
+  `check_ownership_verification`, and `check:openapi` now fails on any tool
+  name the contract does not define.
+- The reference consent card ignores untrusted Confirm clicks, and its docs
+  no longer claim tool code "cannot fabricate a confirmation".
+- The live-registrar parity check reads `WEBMCP_LIVE_REGISTRAR` instead of a
+  hard-coded private monorepo path.
 - Public CI runs the full package gate and checks commit DCO trailers.
+- Reference consent and refusal behavior, schema drift, private parity
+  configuration and DCO checks have executable regression coverage.
