@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { defineConsequentialTool, defineReadTool } from '../dist/index.js';
+const request = { title: 'Open tickets?', detail: 'Open the official page.', confirmLabel: 'Open tickets', timeoutMs: 15 };
+const result = value => JSON.parse(value.content[0].text);
+const make = overrides => defineConsequentialTool({name:'handoff',description:'Open tickets',inputSchema:{type:'object'},parseArgs:()=>({}),describeConsent:()=>request,consent:async()=>({decision:'confirmed'}),execute:async()=>({ok:true}),...overrides});
+test('a custom surface that never settles is bounded by the gate deadline', {timeout:500}, async()=>{
+  const tool=make({consent:()=>new Promise(()=>{})});
+  assert.equal(result(await tool.execute({})).code,'consent_timeout');
+});
+test('a confirmation after the deadline never performs the action', async()=>{
+  let confirm; let calls=0;
+  const tool=make({consent:()=>new Promise(r=>{confirm=r}),execute:async()=>{calls++;return {ok:true}}});
+  assert.equal(result(await tool.execute({})).code,'consent_timeout');
+  confirm({decision:'confirmed'}); await new Promise(r=>setTimeout(r,0));
+  assert.equal(calls,0);
+});
+test('pre-cancelled calls do not open consent or execute',async()=>{
+  let prompts=0;let calls=0;const ac=new AbortController();ac.abort();
+  const tool=make({consent:async()=>{prompts++;return {decision:'confirmed'}},execute:async()=>{calls++}});
+  assert.equal(result(await tool.execute({}, {signal:ac.signal})).code,'tool_cancelled');
+  assert.equal(prompts,0);assert.equal(calls,0);
+});
+test('cancelling an open prompt aborts its surface and blocks late consent',async()=>{
+  const ac=new AbortController();let surfaceSignal;let confirm;let calls=0;
+  const tool=make({consent:(_request,options)=>{surfaceSignal=options.signal;return new Promise(r=>{confirm=r})},execute:async()=>{calls++}});
+  const pending=tool.execute({}, {signal:ac.signal});ac.abort();
+  assert.equal(result(await pending).code,'tool_cancelled');assert.equal(surfaceSignal.aborted,true);
+  confirm({decision:'confirmed'});await Promise.resolve();assert.equal(calls,0);
+});
+test('execution context reaches reads and confirmed actions',async()=>{
+  const ac=new AbortController();let context;
+  const read=defineReadTool({name:'read',description:'Read',inputSchema:{},parseArgs:()=>({}),execute:async(_args,options)=>{context=options;return {ok:true}}});
+  await read.execute({}, {signal:ac.signal});assert.equal(context.signal,ac.signal);
+  await make({execute:async(_args,_consent,options)=>{context=options;return {ok:true}}}).execute({}, {signal:ac.signal});
+  assert.equal(context.signal,ac.signal);
+});

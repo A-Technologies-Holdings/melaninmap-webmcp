@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — SLA-1556
+
+- Enforce consent deadlines independently of custom surfaces; ignore late confirmations.
+- Carry per-invocation cancellation to consent surfaces and action handlers.
+- Bound queued DOM prompts and expire them from enqueue time.
+- Isolate registration state by browser host and reject overlapping tool names.
+- Fail closed when browser feature getters throw.
+
+
 All notable changes to `@melaninmap/webmcp-consent` are documented here. The
 project follows the compatibility contract in [CONTRIBUTING.md](./CONTRIBUTING.md):
 published tool names and schemas are stable surfaces and only change on a new

@@ -459,7 +459,7 @@ test("the same scope stays idempotent", () => {
 test("an explicit scope dedupes across different tool sets", () => {
   const before = strictSeen.options.length;
   assert.equal(
-    registerAgentTools([read], { scope: "widget" }).registered,
+    registerAgentTools([{ ...read, name: "widget_read" }], { scope: "widget" }).registered,
     true,
   );
   assert.deepEqual(registerAgentTools([otherTool], { scope: "widget" }), {

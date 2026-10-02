@@ -20,7 +20,7 @@ import {
   type ConsentResult,
   type ConsentSurface,
 } from "./consent.js";
-import type { ModelContextTool, ModelContextToolResult } from "./types.js";
+import type { ModelContextTool, ModelContextToolResult, ToolExecutionOptions } from "./types.js";
 
 /**
  * Everything a tool returns is JSON in a single text block.
@@ -53,6 +53,46 @@ export function toToolResult(value: unknown): ModelContextToolResult {
   return {
     content: [{ type: "text", text: typeof text === "string" ? text : "null" }],
   };
+}
+
+const CANCELLED = {
+  ok: false, code: "tool_cancelled",
+  message: "The tool call was cancelled. Do not retry automatically.",
+};
+
+/** Enforce the deadline even when consumer code ignores its own timeout. */
+async function awaitConsent(
+  surface: ConsentSurface,
+  request: ConsentRequest,
+  signal?: AbortSignal,
+): Promise<ConsentResult> {
+  const timeoutMs = request.timeoutMs ?? CONSENT_DEFAULT_TIMEOUT_MS;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
+    return { decision: "closed" };
+  }
+  const controller = new AbortController();
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: ConsentResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", cancel);
+      resolve(result);
+      controller.abort();
+    };
+    const cancel = () => finish({ decision: "closed" });
+    const timer = setTimeout(() => finish({ decision: "timeout" }), timeoutMs);
+    signal?.addEventListener("abort", cancel, { once: true });
+    if (signal?.aborted) { cancel(); return; }
+    try {
+      Promise.resolve(surface({ ...request, timeoutMs }, { signal: controller.signal }))
+        .then(value => {
+          try { finish(normalizeConsentResult(value)); }
+          catch { finish({ decision: "closed" }); }
+        }, () => finish({ decision: "closed" }));
+    } catch { finish({ decision: "closed" }); }
+  });
 }
 
 export type ToolFailure = { ok: false; code: string; message?: string };
@@ -99,7 +139,7 @@ export type ToolSpec<Args> = {
   annotations?: ModelContextTool["annotations"];
   /** Validate and narrow raw model-supplied arguments, or return null. */
   parseArgs: (raw: Record<string, unknown>) => Args | null;
-  execute: (args: Args) => Promise<unknown>;
+  execute: (args: Args, options: ToolExecutionOptions) => Promise<unknown>;
   mapError?: ErrorMapper;
 };
 
@@ -152,11 +192,12 @@ export function defineReadTool<Args>(spec: ToolSpec<Args>): ModelContextTool {
     // tool kind win over spec.annotations so a read tool can never be marked
     // non-read-only (and, below, a consequential tool can never claim to be).
     annotations: { ...spec.annotations, readOnlyHint: true },
-    execute: async (raw) => {
+    execute: async (raw, options = {}) => {
+      if (options.signal?.aborted) return toToolResult(CANCELLED);
       const args = safeParseArgs(spec.parseArgs, raw);
       if (args === null) return toToolResult(INVALID_ARGUMENTS);
       try {
-        return toToolResult(await spec.execute(args));
+        return toToolResult(await spec.execute(args, options));
       } catch (error) {
         return toToolResult(safeMapError(mapError, error));
       }
@@ -187,7 +228,7 @@ export type ConsequentialToolSpec<Args> = Omit<ToolSpec<Args>, "execute"> & {
    * consumers would resort to out-of-band shared state, which is both racy and
    * exactly the kind of ambient authority this package argues against.
    */
-  execute: (args: Args, consent: ConsentConfirmation) => Promise<unknown>;
+  execute: (args: Args, consent: ConsentConfirmation, options: ToolExecutionOptions) => Promise<unknown>;
 };
 
 const REFUSAL_DECISIONS: ReadonlySet<unknown> = new Set([
@@ -234,32 +275,29 @@ export function defineConsequentialTool<Args>(
     name: spec.name,
     description: spec.description,
     inputSchema: spec.inputSchema,
-    annotations: { ...spec.annotations, readOnlyHint: false },
-    execute: async (raw) => {
+    annotations: { ...spec.annotations, readOnlyHint: false, consequentialHint: true },
+    execute: async (raw, options = {}) => {
+      if (options.signal?.aborted) return toToolResult(CANCELLED);
       const args = safeParseArgs(spec.parseArgs, raw);
       if (args === null) return toToolResult(INVALID_ARGUMENTS);
 
       let decision: ConsentResult;
       try {
         const request = spec.describeConsent(args);
-        decision = normalizeConsentResult(
-          await spec.consent({
-            timeoutMs: CONSENT_DEFAULT_TIMEOUT_MS,
-            ...request,
-          }),
-        );
+        decision = await awaitConsent(spec.consent, request, options.signal);
       } catch {
         // A consent surface that fails is a consent surface that did not
         // confirm. Fail closed, always.
         return toToolResult(consentRefusal("closed"));
       }
 
+      if (options.signal?.aborted) return toToolResult(CANCELLED);
       if (decision.decision !== "confirmed") {
         return toToolResult(consentRefusal(decision.decision));
       }
 
       try {
-        return toToolResult(await spec.execute(args, decision));
+        return toToolResult(await spec.execute(args, decision, options));
       } catch (error) {
         return toToolResult(safeMapError(mapError, error));
       }
