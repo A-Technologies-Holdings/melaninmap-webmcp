@@ -28,8 +28,8 @@ with an approved Clarksville event or tour and its authority-backed Passport.
 
 No npm-registry release is claimed yet. Install directly from the public
 repository, or clone it and run `npm run check` before linking it locally. The
-runtime has no dependencies; TypeScript is the only devDependency for the
-build.
+runtime has no dependencies; devDependencies are only for the build and the
+check suite.
 
 ```bash
 npm install github:A-Technologies-Holdings/melaninmap-webmcp
@@ -44,10 +44,12 @@ import {
 ```
 
 `npm run check` runs the whole gate: typecheck, the published-contract drift
-check, the build, and a behavioral smoke test that asserts the gate actually
+checks, the build, a `node:test` behavioral suite asserting the gate actually
 holds — the action does not run on decline, timeout, or dismissal, a consent
 surface that *throws* fails closed rather than open, and registration prefers
-the incremental style so a caller's `AbortSignal` is not silently dropped.
+the incremental style so a caller's `AbortSignal` is not silently dropped —
+and a pack lint (`publint` + `attw`) proving the published artifact resolves
+the way consumers will import it. `npm test` runs the suite alone.
 
 `npm run build` emits ESM plus declarations to `dist/`, which is what `main`,
 `types` and `exports` point at — importing the package gets you compiled

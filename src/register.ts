@@ -218,9 +218,18 @@ export function registerAgentTools(
       // again: duplicate executions, duplicate consent prompts, or a hard
       // failure on a host enforcing unique names. Better to report
       // `unsupported` with some tools registered than to make a retry unsafe.
+      //
+      // The bag forwarded to the host carries ONLY the WebMCP `{ signal }`.
+      // Our own `scope` option is idempotence bookkeeping for the flags below
+      // and must never reach the host: an implementation that validates the
+      // options bag strictly would reject the unknown key, fall through to the
+      // bare retry, and silently drop the caller's abort-scoping.
+      const hostOptions = options?.signal
+        ? { signal: options.signal }
+        : undefined;
       for (const tool of tools) {
         try {
-          host.registerTool(tool, options);
+          host.registerTool(tool, hostOptions);
         } catch {
           // Some implementations reject an unknown options bag. Retry bare
           // rather than lose the whole registration over it.
