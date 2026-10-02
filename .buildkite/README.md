@@ -14,6 +14,6 @@ Build pull requests when opened/updated or when their base branch changes, inclu
 
 Keep fork builds disabled until an isolated, credential-free runner policy is configured. Public PR code must never receive production credentials or execute on a signing runner. This pipeline requires only public repository checkout access.
 
-First run the new pipeline against this PR and verify both checks at its exact head. Only after that succeeds, retire `.github/workflows/check.yml` and require the two Buildkite checks alongside existing Semgrep and code-owner approval. Do not weaken review protection or treat local validation as hosted proof.
+Buildkite build [#2](https://buildkite.com/rgi-group/melaninmap-webmcp/builds/2) passed package and PR DCO checks at `a3370660f5f9fd7ff466dd9e9dad4ef16e1db58b`. The redundant GitHub Actions workflow is retired in this CI migration. Require both Buildkite checks alongside existing Semgrep and code-owner approval. Each new PR head still needs fresh hosted checks; do not treat local validation as hosted proof.
 
 DCO uses the fetched PR base branch merge-base with HEAD. Missing PR base metadata fails the step; branch-only builds explicitly report DCO as not applicable.
