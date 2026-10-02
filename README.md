@@ -39,7 +39,7 @@ npm install github:A-Technologies-Holdings/melaninmap-webmcp
 import {
   defineReadTool,
   defineConsequentialTool,
-  registerAgentTools,
+  registerAgentToolsAsync,
 } from "@melaninmap/webmcp-consent";
 ```
 
@@ -120,7 +120,7 @@ const handoff = defineConsequentialTool({
   execute: (args) => api.handoff(args),
 });
 
-registerAgentTools([search, handoff]);
+await registerAgentToolsAsync([search, handoff]);
 ```
 
 `registerAgentTools` is fully feature-detected. In any browser without either
