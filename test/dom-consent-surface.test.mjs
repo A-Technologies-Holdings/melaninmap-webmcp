@@ -272,3 +272,22 @@ test("prompt backlog is bounded and cancellation removes the active dialog", asy
   assert.equal(dialogs[0].removed, true);
   await Promise.all([second, third]); await tick();
 });
+
+test("an expired queued prompt frees its slot while an earlier prompt is open", async () => {
+  reset();
+  const first = domConsentSurface(request);
+  const second = domConsentSurface({ ...request, timeoutMs: 20 });
+  const third = domConsentSurface({ ...request, timeoutMs: 20 });
+  assert.deepEqual(await Promise.all([second, third]), [
+    { decision: "timeout" },
+    { decision: "timeout" },
+  ]);
+  // Only the first prompt is still unanswered, so a new one must queue rather
+  // than be refused as if the backlog were full.
+  const fourth = domConsentSurface({ ...request, timeoutMs: 20 });
+  assert.deepEqual(await fourth, { decision: "timeout" });
+  await tick();
+  declineButton(dialogs[0]).click();
+  assert.deepEqual(await first, { decision: "declined" });
+  await tick();
+});

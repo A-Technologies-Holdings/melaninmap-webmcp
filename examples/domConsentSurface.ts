@@ -127,6 +127,10 @@ export const domConsentSurface: ConsentSurface = (request, options = {}) => {
     finish = value => {
       if (settled) return;
       settled = true;
+      // Capacity counts unanswered requests, so free the slot the moment this
+      // one settles. Waiting for its turn in the chain would keep an expired
+      // request counted behind a prompt that is still open.
+      queued -= 1;
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", cancel);
       resolve(value);
@@ -144,6 +148,6 @@ export const domConsentSurface: ConsentSurface = (request, options = {}) => {
     try { finish(await prompt({ ...request, timeoutMs: remaining }, controller.signal)); }
     catch { finish({ decision: "closed" }); }
   });
-  pending = next.finally(() => { queued -= 1; });
+  pending = next;
   return answer;
 };
