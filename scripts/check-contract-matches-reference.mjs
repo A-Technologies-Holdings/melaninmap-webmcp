@@ -22,8 +22,10 @@
  *   1. published tools.json  ==  reference/registerAgentTools.ts (deep)
  *   2. reference/registerAgentTools.ts  ==  the live landing registrar
  *
- * Check 2 runs when WEBMCP_LIVE_REGISTRAR names a private registrar file.
- * Unset means private parity is NOT RUN; an invalid configured path fails.
+ * Check 2 runs only when WEBMCP_LIVE_REGISTRAR points at the live registrar
+ * file — the private monorepo sets it to its landing-site copy. This public
+ * repo cannot see that file, so the gate skips check 2 rather than failing:
+ * the published package must stay self-checking on its own.
  *
  * Run: npm run check:contract
  */
@@ -39,12 +41,8 @@ const contract = JSON.parse(
 );
 
 const REFERENCE = join(root, "reference/registerAgentTools.ts");
-// Optional private checkout; an explicit but missing path must fail closed.
-const LIVE = process.env.WEBMCP_LIVE_REGISTRAR;
-if (LIVE && !existsSync(LIVE)) {
-  console.error("FAIL WEBMCP_LIVE_REGISTRAR does not exist");
-  process.exit(1);
-}
+// Set by the private monorepo; unset (and check 2 skipped) everywhere else.
+const LIVE = process.env.WEBMCP_LIVE_REGISTRAR || null;
 
 /** Strip comments so an object literal can be evaluated. Not inside strings. */
 function stripComments(text) {
@@ -230,7 +228,12 @@ for (const tool of contract.tools) {
   console.error(`  deployed:  ${show(deployed)}`);
 }
 
-if (LIVE) {
+if (LIVE && !existsSync(LIVE)) {
+  // Set but wrong is a misconfiguration, not a standalone package: skipping
+  // here would report parity that was never checked.
+  failures += 1;
+  console.error(`FAIL WEBMCP_LIVE_REGISTRAR does not exist: ${LIVE}`);
+} else if (LIVE) {
   const liveSource = readFileSync(LIVE, "utf8");
   const liveNames = extractRegisteredToolNames(liveSource);
   // Mirror the reference side exactly. An unreadable registration array must
@@ -274,7 +277,7 @@ if (LIVE) {
     console.error(`  reference: ${show(ref)}`);
   }
 } else {
-  console.log("\nskip live-registrar parity: WEBMCP_LIVE_REGISTRAR unset (private parity NOT RUN)");
+  console.log("\nskip live-registrar parity: WEBMCP_LIVE_REGISTRAR is not set");
 }
 
 if (failures > 0) {

@@ -26,7 +26,7 @@ test('OpenAPI check rejects a stale tool name while accepting refusal codes', ()
   writeFileSync(path, readFileSync(path, 'utf8').replaceAll('check_ownership_verification', 'check_verification_status'));
   const result = check(root, 'check-openapi-pointers.mjs');
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /unknown WebMCP tool mention: check_verification_status/);
+  assert.match(result.stderr, /schemas name a tool the contract does not define: check_verification_status/);
 }));
 
 test('private parity fails for a missing configured path and passes for a matching registrar', () => fixture((root) => {

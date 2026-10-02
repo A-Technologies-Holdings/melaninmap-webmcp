@@ -196,11 +196,11 @@
   ],
   "resultEnvelopes": {
     "refusal": {
-      "description": "Returned when a consequential tool did not run because consent was not given or could not be collected. The model is told what happened and what not to do next.",
+      "description": "Returned when a consequential tool did not run because consent was not given or could not be collected. The model is told what happened and what not to do next: `message` is an instruction written to be acted on.",
       "shape": {
         "ok": false,
         "code": "user_declined | busy",
-        "message": "Guidance explaining the refusal and instructing the model not to retry automatically."
+        "message": "string"
       }
     },
     "failure": {

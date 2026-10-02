@@ -6,7 +6,8 @@
  * nothing in the gate noticed. This check closes that hole.
  *
  * It also validates that openapi.yaml parses at all — until now nothing in
- * `npm run check` read it.
+ * `npm run check` read it — and that every tool name the schemas mention is
+ * one the contract actually defines.
  *
  * Run: npm run check:openapi
  */
@@ -102,18 +103,27 @@ if (deadInternal === 0) {
   console.log(`ok   all ${internalRefs.length} internal openapi.yaml $refs resolve`);
 }
 
-// Validate tool mentions in prose/comments, including removed or misspelled names.
-// Restrict to tool verb prefixes; refusal codes and HTTP operationIds are separate.
-const names = new Set(contract.tools.map((tool) => tool.name));
-const source = readFileSync(openapiPath, "utf8");
-const mentions = new Set(source.match(/\b(?:search_|get_|check_|record_|request_)[a-z]+(?:_[a-z]+)*\b/g) ?? []);
-for (const name of mentions) {
-  if (!names.has(name)) {
-    failures += 1;
-    console.error(`FAIL unknown WebMCP tool mention: ${name}`);
+// 3. Every tool name the schemas mention must be a tool the contract defines.
+// Prose and comments in openapi.yaml name tools freely, and pointers cannot
+// catch a stale one: `check_verification_status` survived a rename to
+// `check_ownership_verification` this way. Scoped to the tool verbs so error
+// codes like `invalid_installation_id` are not mistaken for tool names.
+const toolNames = new Set(contract.tools.map((tool) => tool.name));
+const TOOL_NAME_SHAPE = /\b(?:search|get|check|record|request)_[a-z_]+\b/g;
+const unknownNames = new Set();
+for (const path of [openapiPath, contractPath]) {
+  for (const name of readFileSync(path, "utf8").match(TOOL_NAME_SHAPE) ?? []) {
+    if (!toolNames.has(name)) unknownNames.add(name);
   }
 }
-console.log(`ok   checked ${mentions.size} WebMCP tool mentions`);
+if (unknownNames.size > 0) {
+  failures += unknownNames.size;
+  for (const name of [...unknownNames].sort()) {
+    console.error(`FAIL schemas name a tool the contract does not define: ${name}`);
+  }
+} else {
+  console.log(`ok   every tool name in schemas/ is one of the ${toolNames.size} contract tools`);
+}
 
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed.`);

@@ -58,7 +58,7 @@ for (const status of ['busy', 'declined']) {
     const payload = JSON.parse(result.content[0].text);
     assert.equal(payload.ok, false);
     assert.equal(payload.code, status === 'busy' ? 'busy' : 'user_declined');
-    assert.match(payload.message, /Do not retry automatically/);
+    assert.match(payload.message, /do not retry/i);
     assert.equal(requests, 0);
   });
 }

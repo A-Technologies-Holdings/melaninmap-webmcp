@@ -12,8 +12,10 @@
  *   { status: "busy" } immediately without disturbing the open card.
  * - A pending request auto-declines after 60 seconds.
  * - A "confirmed" resolution carries the consent token, which only the card
- *   module holds by convention. Page scripts can fabricate this public signal;
- *   the token is an audit/UX signal, never an authorization credential.
+ *   module references, so tool code does not confirm by accident. This is
+ *   hygiene, not a boundary: the token is a public literal and
+ *   resolvePendingConsentRequest() is exported. The server never authorizes
+ *   on the token (SECURITY.md).
  */
 
 export type HandoffConsentRequest = {

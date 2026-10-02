@@ -6,8 +6,8 @@ info:
     name: MIT
     url: https://github.com/A-Technologies-Holdings/melaninmap-webmcp/blob/main/LICENSE
   description: |
-    The seven HTTP endpoints behind the five WebMCP tools registered by
-    melaninmap.app. Published so an agent author can read the contract without
+    The HTTP surface — seven endpoints — behind the five WebMCP tools
+    registered by melaninmap.app. Published so an agent author can read the contract without
     executing the page.
 
     Every endpoint is POST + JSON, same-origin, and unauthenticated: there are
@@ -16,11 +16,14 @@ info:
     continuity, NOT as a credential — see SECURITY.md before you copy this
     shape, because the server-side controls are the part that matters.
 
-    Four endpoints change state: `/agent/action` records follow-through,
-    `/agent/handoff-consent` issues an operation-bound proof, `/agent/handoff`
-    creates an attributed journey, and `/agent/handoff-open` redeems it.
-    Action, consent and create bind to a server-minted recommendation for the
-    installation; open binds to the installation and journey token.
+    Two lanes write attributed records. `/agent/action` records an attributed
+    follow-through. The handoff lane is three calls, in order:
+    `/agent/handoff-consent` exchanges the page's visible confirmation signal
+    for a short-lived, operation-bound server proof; `/agent/handoff` creates
+    the attributed journey with that proof; `/agent/handoff-open` redeems the
+    journey's token for its ticketing destination. Both write lanes
+    refuse without a `recommendationId` the server minted for that same
+    installation, so `/agent/search` is the entry point for every write path.
 servers:
   # The public agent paths are `/agent/*`, which is what llms.txt advertises and
   # what this document describes. `vercel.json` rewrites all seven to the
@@ -595,7 +598,6 @@ components:
       required: [ok, code]
       properties:
         ok: { const: false }
-        message: { type: string, description: Optional guidance for the model after a refusal. }
         code:
           # Deliberately NOT a closed enum. `errorEnvelope` relays
           # `AgentGatewayApiError.code`, which `postJson` builds as
@@ -614,6 +616,13 @@ components:
           #   from the backend limiter, plus the fallbacks `rate_limit` (429)
           #   and `agent_gateway_failed` (other non-2xx).
           type: string
+        message:
+          type: string
+          description: |
+            Optional instruction for the model, present on the consent
+            outcomes (`busy`, `user_declined`). Written to be acted on: it says
+            what happened and whether to retry. Optional, so a client that
+            only reads `code` is unaffected.
     RedeemedHandoff:
       type: object
       required: [ok, destinationUrl, attributionIncluded, replayed, sequence]

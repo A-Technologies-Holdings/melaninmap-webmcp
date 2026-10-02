@@ -476,11 +476,23 @@ const handoffTool: ModelContextTool = {
     const targetName = await lookupTargetName(targetExternalId);
     const outcome = await requestHandoffConsent({ targetName });
 
+    // Refusals are written as instructions: the model acts on this string,
+    // and a bare code gives it nothing to do but guess — or retry.
     if (outcome.status === "busy") {
-      return toToolResult({ ok: false, code: "busy", message: "A confirmation is already open. Do not retry automatically; wait for the person to answer." });
+      return toToolResult({
+        ok: false,
+        code: "busy",
+        message:
+          "Another confirmation is already open for this person. Wait for it to be answered; do not retry this hand-off in a loop.",
+      });
     }
     if (outcome.status !== "confirmed") {
-      return toToolResult({ ok: false, code: "user_declined", message: "The person declined or did not answer the hand-off confirmation. Do not retry automatically. Ask what they would prefer instead." });
+      return toToolResult({
+        ok: false,
+        code: "user_declined",
+        message:
+          "The person declined this hand-off, or did not answer in time. Do not retry it. Ask what they would prefer instead.",
+      });
     }
 
     try {
