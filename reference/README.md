@@ -23,11 +23,13 @@ reference file compiling. Read it, copy from it, restyle it.
 
 ## Three details that matter more than they look
 
-**The consent token constant never leaves the card module.** It is not exported.
-Tool code receives it only as the resolution value of a confirmation the person
-actually clicked. That is a *structural* guarantee inside the page — a bug in
-tool code cannot fabricate a confirmation, because it has no way to name the
-value. It is emphatically **not** a server-side authorization credential; see
+**The consent token constant is not exported, and only a trusted click confirms.**
+Tool code receives the token only as the resolution value of a confirmation,
+and the card ignores Confirm clicks the browser did not originate
+(`isTrusted === false`). That keeps a *bug* in tool code from confirming by
+accident. It is not a guarantee against *deliberate* code: the token is a public
+literal and `resolvePendingConsentRequest()` is exported. It is emphatically
+**not** a server-side authorization credential; see
 [`../SECURITY.md`](../SECURITY.md), which is blunt about the difference.
 
 **Focus starts on Decline.** Enter must never be an accidental consent. Escape

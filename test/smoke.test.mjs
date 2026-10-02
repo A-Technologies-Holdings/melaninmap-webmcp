@@ -220,6 +220,17 @@ for (const [label, value] of [
   ["a bare string", "confirmed"],
   ["an unknown decision", { decision: "yes" }],
   ["a missing decision", {}],
+  [
+    "a decision that changes between reads",
+    (() => {
+      const reads = ["x", "declined", "yes"];
+      return {
+        get decision() {
+          return reads.shift();
+        },
+      };
+    })(),
+  ],
 ]) {
   test(`a surface resolving ${label} fails CLOSED as a well-formed refusal`, async () => {
     let ran = false;
@@ -492,25 +503,6 @@ test("falls back to document.modelContext when navigator's is empty", () => {
 // provideContext REPLACES the page's tool set. A second scope on a bulk-only
 // host would silently unregister the first, so it is refused instead.
 test("a different scope on a bulk-only host is refused, not allowed to wipe the first", () => {
-  const before = seen.bulk;
-  assert.deepEqual(registerAgentTools([otherTool], { scope: "second-bundle" }), {
-    registered: false,
-    reason: "bulk_conflict",
-  });
-  assert.equal(seen.bulk, before, "provideContext must not be called again");
-});
-
-test("the bulk owner's own scope stays idempotent, not a conflict", () => {
-  assert.deepEqual(registerAgentTools([bulkTool]), {
-    registered: false,
-    reason: "already_registered",
-  });
-});
-
-// provideContext REPLACES the page's tool set. A second scope calling it would
-// silently erase the first scope's tools while both were told they registered,
-// so the first bulk scope owns the page and a different one is refused.
-test("a second scope on a bulk-only host is refused, not allowed to erase the first", () => {
   const before = seen.bulk;
   assert.deepEqual(registerAgentTools([otherTool], { scope: "second-bundle" }), {
     registered: false,

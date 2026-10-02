@@ -5,9 +5,13 @@
  * components/ConsentBanner.tsx: surface #17110D, gold #C9963B on bg #0D0907,
  * borders rgba(201,150,59,0.2), rounded-2xl, uppercase tracking buttons.
  *
- * The consent token constant lives ONLY in this module and leaves it only
- * through resolvePendingConsentRequest() when the person clicks Confirm —
- * tool execute code cannot fabricate a confirmation.
+ * The consent token constant is not exported, and the card only resolves a
+ * confirmation from a trusted (browser-originated) Confirm click. That keeps a
+ * bug in tool code from confirming by accident. It is module hygiene, not a
+ * security boundary: the token is a public literal and
+ * resolvePendingConsentRequest() is exported, so deliberate code can still
+ * resolve a confirmation. The server never authorizes on the token — see
+ * SECURITY.md.
  *
  * Mounted by the registrar into its own React root (sonner-style dedicated
  * container) via ensureHandoffConsentCardMounted(), so the card exists only
@@ -35,7 +39,12 @@ function decline() {
   resolvePendingConsentRequest({ status: "declined" });
 }
 
-function confirm() {
+function confirm(event: React.MouseEvent<HTMLButtonElement>) {
+  // A script calling button.click() produces an untrusted event. Only a real
+  // input event confirms — checked BEFORE window.open so an untrusted click
+  // cannot open a placeholder tab either. This raises the bar for page
+  // scripts; it is not proof a human acted.
+  if (!event.nativeEvent.isTrusted) return;
   // Open the destination placeholder inside the click handler, while the
   // transient user activation is still valid — the redemption round trips
   // that follow would otherwise leave a later window.open popup-blocked on
