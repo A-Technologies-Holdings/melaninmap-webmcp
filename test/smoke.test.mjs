@@ -220,6 +220,17 @@ for (const [label, value] of [
   ["a bare string", "confirmed"],
   ["an unknown decision", { decision: "yes" }],
   ["a missing decision", {}],
+  [
+    "a decision that changes between reads",
+    (() => {
+      const reads = ["x", "declined", "yes"];
+      return {
+        get decision() {
+          return reads.shift();
+        },
+      };
+    })(),
+  ],
 ]) {
   test(`a surface resolving ${label} fails CLOSED as a well-formed refusal`, async () => {
     let ran = false;
