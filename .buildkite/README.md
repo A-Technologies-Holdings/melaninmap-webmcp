@@ -10,7 +10,7 @@ steps:
       queue: macos-15-medium
 ```
 
-Enable builds when pull requests open/update, including their base branch metadata. Use the existing macOS queue and shared serialization; no new paid queue is provisioned. Package and DCO steps report `Buildkite / WebMCP package` and `Buildkite / WebMCP DCO`. Jobs have bounded runtimes. No publishing or deployment is performed.
+Build pull requests when opened/updated or when their base branch changes, including PR base metadata. Limit ordinary branch builds to `main` so a branch build cannot suppress the PR build and skip DCO. Use the existing macOS queue and shared serialization; no new paid queue is provisioned. Package and DCO steps report `Buildkite / WebMCP package` and `Buildkite / WebMCP DCO`. Jobs have bounded runtimes. No publishing or deployment is performed.
 
 Keep fork builds disabled until an isolated, credential-free runner policy is configured. Public PR code must never receive production credentials or execute on a signing runner. This pipeline requires only public repository checkout access.
 
