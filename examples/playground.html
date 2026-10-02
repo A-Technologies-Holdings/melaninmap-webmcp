@@ -11,7 +11,7 @@ pre { white-space: pre-wrap; padding: 1rem; background: #eee; color: #222; }
 <h1>Consent playground</h1>
 <p>This local demonstration changes only a counter on this page. Read the prompt, decline it, let it expire, or cancel the invocation. A browser with WebMCP support can also discover the demonstration tool.</p>
 <button id="start">Request counter update</button>
-<button id="cancel">Cancel outstanding calls</button>
+<button id="cancel">Request and cancel after one second</button>
 <p>Confirmed updates: <output id="count">0</output></p>
 <pre id="result" aria-live="polite">Ready. Consent expires after five seconds, including queue time.</pre>
 <script type="module">
@@ -28,12 +28,14 @@ const tool = defineConsequentialTool({
   describeConsent: () => ({title:'Add one to the demonstration counter?',detail:'Only this local page changes. The request expires in five seconds.',confirmLabel:'Add one',timeoutMs:5000}),
   execute: async () => { count += 1; document.getElementById('count').textContent = String(count); return {ok:true,count}; },
 });
-document.getElementById('start').addEventListener('click', async () => {
+async function run(cancelAfterMs) {
   const controller = new AbortController(); controllers.add(controller);
+  const timer = cancelAfterMs ? setTimeout(() => controller.abort(), cancelAfterMs) : undefined;
   try { result.textContent = JSON.stringify(await tool.execute({}, {signal:controller.signal}), null, 2); }
-  finally { controllers.delete(controller); }
-});
-document.getElementById('cancel').addEventListener('click', () => controllers.forEach(controller => controller.abort()));
+  finally { clearTimeout(timer); controllers.delete(controller); }
+}
+document.getElementById('start').addEventListener('click', () => run());
+document.getElementById('cancel').addEventListener('click', () => run(1000));
 const registered = await registerAgentToolsAsync([tool]);
 if (!registered.registered) result.textContent += '\nBrowser registration: ' + registered.reason + '. Page controls still work.';
 </script>
