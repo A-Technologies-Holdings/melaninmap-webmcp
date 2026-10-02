@@ -135,9 +135,9 @@ export function requestHandoffConsent(
  * module; the bridge attaches the pending request's idempotency key so the
  * whole consent resolves to exactly one server-side create identity.
  */
-export function resolvePendingConsentRequest(answer: HandoffConsentAnswer, request: HandoffConsentRequest) {
+export function resolvePendingConsentRequest(answer: HandoffConsentAnswer, request: HandoffConsentRequest): boolean {
   if (!pending || pending.request !== request) {
-    return;
+    return false;
   }
   const current = pending;
   pending = null;
@@ -148,4 +148,5 @@ export function resolvePendingConsentRequest(answer: HandoffConsentAnswer, reque
       ? { ...answer, idempotencyKey: current.idempotencyKey }
       : answer,
   );
+  return true;
 }
