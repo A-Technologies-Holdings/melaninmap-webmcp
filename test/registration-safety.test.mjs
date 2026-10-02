@@ -51,3 +51,13 @@ test('bulk compatibility registration observes rejection without claiming accept
  assert.deepEqual(registerAgentTools([tool('bulk_promise')]),{registered:false,reason:'already_registered'});
  await Promise.resolve();
 });
+
+test('legacy scope reservations prevent duplicate registration across bundles',()=>{
+ globalThis.__webmcpAgentToolsRegistered = { '["legacy"]': true };
+ let calls=0; host({registerTool(){calls++}});
+ try {
+  assert.equal(registerAgentTools([tool('legacy')]).reason,'already_registered');
+  assert.equal(registerAgentTools([tool('legacy'),tool('extra')]).reason,'tool_conflict');
+  assert.equal(calls,0);
+ } finally { delete globalThis.__webmcpAgentToolsRegistered; }
+});

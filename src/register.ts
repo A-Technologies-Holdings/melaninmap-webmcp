@@ -28,6 +28,23 @@ function stateFor(identity: object): HostState {
   } catch { /* Local deduplication still works when globals are locked. */ }
   let state = registry.get(identity);
   if (!state) { state = { scopes: new Set(), names: new Set() }; registry.set(identity, state); }
+  // Legacy bundles used page-global scopes without host identity. Preserve them
+  // conservatively on every detected host while those bundles remain loaded.
+  try {
+    const legacy = (globalThis as unknown as Record<string, unknown>).__webmcpAgentToolsRegistered;
+    if (legacy === true) state.scopes.add("*");
+    else if (legacy && typeof legacy === "object") {
+      for (const [scope, active] of Object.entries(legacy)) {
+        if (active !== true) continue;
+        state.scopes.add(scope);
+        try {
+          const names: unknown = JSON.parse(scope);
+          if (Array.isArray(names) && names.every(name => typeof name === "string")) names.forEach(name => state!.names.add(name));
+          else state.scopes.add("*");
+        } catch { state.scopes.add("*"); }
+      }
+    }
+  } catch { /* Locked legacy globals must not throw into the page. */ }
   return state;
 }
 function registrationScope(tools: readonly ModelContextTool[], options?: RegisterAgentToolsOptions): string {
@@ -154,7 +171,7 @@ export function registerAgentTools(
   if (!host) return { registered: false, reason: "unsupported" };
   const state = stateFor(host.identity);
   const scope = registrationScope(tools, options);
-  if (state.scopes.has(scope)) return { registered: false, reason: "already_registered" };
+  if (state.scopes.has("*") || state.scopes.has(scope)) return { registered: false, reason: "already_registered" };
   const names = tools.map(tool => tool.name);
   if (new Set(names).size !== names.length || names.some(name => state.names.has(name))) {
     return { registered: false, reason: "tool_conflict" };
@@ -282,7 +299,7 @@ export async function registerAgentToolsAsync(
   if (!host) return { registered: false, reason: "unsupported" };
   const state = stateFor(host.identity);
   const scope = registrationScope(tools, options);
-  if (state.scopes.has(scope)) return { registered: false, reason: "already_registered" };
+  if (state.scopes.has("*") || state.scopes.has(scope)) return { registered: false, reason: "already_registered" };
   const names = tools.map(tool => tool.name);
   if (new Set(names).size !== names.length || names.some(name => state.names.has(name))) {
     return { registered: false, reason: "tool_conflict" };
