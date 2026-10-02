@@ -27,15 +27,16 @@ function loadReference(file, exportName, modules, globals = {}) {
 test('React reference rejects synthetic Confirm before opening a tab', () => {
   let opened = 0;
   const resolved = [];
+  const request = { targetName: "Displayed" };
   const handle = { opener: 'original' };
   const confirm = loadReference('HandoffConsentCard.tsx', 'confirm', {
     react: {}, 'react-dom/client': {}, 'react/jsx-runtime': {},
-    './consentBridge': { resolvePendingConsentRequest: (answer) => resolved.push(answer) },
+    './consentBridge': { getPendingConsentRequest: () => request, resolvePendingConsentRequest: (answer) => { resolved.push(answer); return true; } },
   }, { window: { open: () => { opened++; return handle; } } });
-  confirm({ nativeEvent: { isTrusted: false } });
+  confirm(request, { nativeEvent: { isTrusted: false } });
   assert.equal(opened, 0);
   assert.equal(resolved.length, 0);
-  confirm({ nativeEvent: { isTrusted: true } });
+  confirm(request, { nativeEvent: { isTrusted: true } });
   assert.equal(opened, 1);
   assert.equal(resolved[0].status, 'confirmed');
   assert.equal(resolved[0].navigationHandle, handle);
