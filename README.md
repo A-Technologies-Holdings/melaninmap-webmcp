@@ -49,12 +49,16 @@ holds — the action does not run on decline, timeout, or dismissal, a consent
 surface that *throws* fails closed rather than open, and registration prefers
 the incremental style so a caller's `AbortSignal` is not silently dropped —
 and a pack lint (`publint` + `attw`) proving the published artifact resolves
-the way consumers will import it. `npm test` runs the suite alone.
+the way consumers will import it. `npm test` builds and runs the suite alone.
 
 `npm run build` emits ESM plus declarations to `dist/`, which is what `main`,
 `types` and `exports` point at — importing the package gets you compiled
 JavaScript, not raw TypeScript that a consumer's runtime or bundler would have
 to strip for itself.
+
+The package is **ESM-only**. There is no CommonJS build: a CommonJS consumer
+loads it with a dynamic `import()`. The runtime targets browsers; Node 22 or
+newer is needed only for the build and the check suite.
 
 Or skip the dependency entirely: it is about 380 lines of code (700 with the
 comments that explain why) with nothing to configure, so copying `src/` into

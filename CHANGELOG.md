@@ -28,3 +28,6 @@ First public release.
 - `check:pack` lints the published artifact (`publint` +
   `attw --pack --profile esm-only`), `prepublishOnly` reruns the full gate
   before npm publish, and `RELEASING.md` documents the release runbook.
+- `npm test` builds before it runs, so the suite works from a fresh clone;
+  the README states the package is ESM-only; Dependabot keeps the
+  devDependencies current.

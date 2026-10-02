@@ -42,11 +42,12 @@
     "prepack": "npm run build",
     "prepublishOnly": "npm run check",
     "build:test": "tsc -p tsconfig.test.json",
+    "pretest": "npm run build && npm run build:test",
     "test": "node --test",
     "check:contract": "node scripts/check-contract-matches-reference.mjs",
     "check:openapi": "node scripts/check-openapi-pointers.mjs",
     "check:pack": "publint && attw --pack . --profile esm-only",
-    "check": "npm run typecheck && npm run check:contract && npm run check:openapi && npm run build && npm run build:test && npm test && npm run check:pack"
+    "check": "npm run typecheck && npm run check:contract && npm run check:openapi && npm run build && npm run build:test && node --test && npm run check:pack"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
