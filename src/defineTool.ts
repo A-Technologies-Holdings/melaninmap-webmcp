@@ -251,14 +251,19 @@ function normalizeConsentResult(value: unknown): ConsentResult {
   if (value === null || typeof value !== "object") {
     return { decision: "closed" };
   }
-  const result = value as { decision?: unknown; auditToken?: unknown };
-  if (result.decision === "confirmed") {
-    return typeof result.auditToken === "string"
-      ? { decision: "confirmed", auditToken: result.auditToken }
+  // Read each property exactly once. A getter or Proxy can answer differently
+  // on every read, and the value checked must be the value returned.
+  const { decision, auditToken } = value as {
+    decision?: unknown;
+    auditToken?: unknown;
+  };
+  if (decision === "confirmed") {
+    return typeof auditToken === "string"
+      ? { decision: "confirmed", auditToken }
       : { decision: "confirmed" };
   }
-  return REFUSAL_DECISIONS.has(result.decision)
-    ? { decision: result.decision as "declined" | "timeout" | "closed" }
+  return REFUSAL_DECISIONS.has(decision)
+    ? { decision: decision as "declined" | "timeout" | "closed" }
     : { decision: "closed" };
 }
 
