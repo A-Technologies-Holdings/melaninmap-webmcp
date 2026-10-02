@@ -41,3 +41,14 @@ First public release.
 - `examples/domConsentSurface` ignores untrusted (script-dispatched) Confirm
   clicks, and a click on the backdrop now resolves `closed` as its header
   always claimed.
+- Contract: `ToolRefusal` and the tools.json refusal envelope gain an
+  optional `message` (additive); the reference registrar's `busy` and
+  `user_declined` refusals now carry a do-not-retry instruction.
+- `openapi.yaml` counts seven endpoints and describes the three-call handoff
+  lane; a stale `check_verification_status` tool name is corrected to
+  `check_ownership_verification`, and `check:openapi` now fails on any tool
+  name the contract does not define.
+- The reference consent card ignores untrusted Confirm clicks, and its docs
+  no longer claim tool code "cannot fabricate a confirmation".
+- The live-registrar parity check reads `WEBMCP_LIVE_REGISTRAR` instead of a
+  hard-coded private monorepo path.
