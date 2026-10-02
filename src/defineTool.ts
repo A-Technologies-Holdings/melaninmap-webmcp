@@ -199,6 +199,9 @@ export function defineReadTool<Args>(spec: ToolSpec<Args>): ModelContextTool {
       try {
         return toToolResult(await spec.execute(args, options));
       } catch (error) {
+        // A handler that forwards the signal to fetch rejects with an abort
+        // error. That is a cancellation, not an unavailable tool.
+        if (options.signal?.aborted) return toToolResult(CANCELLED);
         return toToolResult(safeMapError(mapError, error));
       }
     },
@@ -304,6 +307,8 @@ export function defineConsequentialTool<Args>(
       try {
         return toToolResult(await spec.execute(args, decision, options));
       } catch (error) {
+        // Same as the read path: an aborted signal means cancelled.
+        if (options.signal?.aborted) return toToolResult(CANCELLED);
         return toToolResult(safeMapError(mapError, error));
       }
     },

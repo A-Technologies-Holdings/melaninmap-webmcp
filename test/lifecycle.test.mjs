@@ -35,3 +35,14 @@ test('execution context reaches reads and confirmed actions',async()=>{
   await make({execute:async(_args,_consent,options)=>{context=options;return {ok:true}}}).execute({}, {signal:ac.signal});
   assert.equal(context.signal,ac.signal);
 });
+test('an abort during execution reports tool_cancelled, not tool_unavailable',async()=>{
+  const abortable=signal=>new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(new DOMException('aborted','AbortError'))));
+  const readAc=new AbortController();
+  const read=defineReadTool({name:'read',description:'Read',inputSchema:{},parseArgs:()=>({}),execute:(_args,options)=>abortable(options.signal)});
+  const readPending=read.execute({}, {signal:readAc.signal});readAc.abort();
+  assert.equal(result(await readPending).code,'tool_cancelled');
+  const actAc=new AbortController();let started;const running=new Promise(r=>{started=r});
+  const act=make({execute:(_args,_consent,options)=>{started();return abortable(options.signal)}});
+  const actPending=act.execute({}, {signal:actAc.signal});await running;actAc.abort();
+  assert.equal(result(await actPending).code,'tool_cancelled');
+});
