@@ -1,20 +1,11 @@
 # Changelog
 
-## Unreleased — SLA-1556
-
-- Enforce consent deadlines independently of custom surfaces; ignore late confirmations.
-- Carry per-invocation cancellation to consent surfaces and action handlers.
-- Bound queued DOM prompts and expire them from enqueue time.
-- Isolate registration state by browser host and reject overlapping tool names.
-- Fail closed when browser feature getters throw.
-
-
 All notable changes to `@melaninmap/webmcp-consent` are documented here. The
 project follows the compatibility contract in [CONTRIBUTING.md](./CONTRIBUTING.md):
 published tool names and schemas are stable surfaces and only change on a new
 versioned path.
 
-## [1.0.0] - Unreleased
+## [1.0.0] - 2026-10-03
 
 First public release.
 
@@ -64,3 +55,13 @@ First public release.
 - Public CI runs the full package gate and checks commit DCO trailers.
 - Reference consent and refusal behavior, schema drift, private parity
   configuration and DCO checks have executable regression coverage.
+- Consent deadlines are enforced by the library even when a custom surface
+  never settles, and a late confirmation never runs the action.
+- Per-call cancellation (`options.signal`) reaches consent surfaces and
+  action handlers. A call cancelled before or during execution returns
+  `tool_cancelled`.
+- `domConsentSurface` bounds its prompt queue, expires queued prompts from
+  enqueue time, and frees a slot as soon as a request settles.
+- Registration state is isolated per browser host, overlapping tool names
+  are rejected, and throwing browser feature getters fail closed.
+- CI runs on Buildkite (`Buildkite / WebMCP package`, `Buildkite / WebMCP DCO`).
