@@ -59,8 +59,14 @@ class FakeElement {
     focused = this;
   }
 
+  // A real user's click: the browser marks it trusted.
   click() {
-    this.dispatch("click");
+    this.dispatch("click", { isTrusted: true, target: this });
+  }
+
+  // What `element.click()` from page script produces: isTrusted is false.
+  syntheticClick() {
+    this.dispatch("click", { isTrusted: false, target: this });
   }
 }
 
@@ -80,6 +86,10 @@ class FakeDialog extends FakeElement {
   close() {
     this.open = false;
     this.dispatch("close");
+  }
+
+  getBoundingClientRect() {
+    return { left: 100, right: 400, top: 100, bottom: 300 };
   }
 }
 
@@ -193,4 +203,46 @@ test("concurrent prompts queue instead of stacking", async () => {
   assert.equal(dialogs.length, 2);
   confirmButton(dialogs[1]).click();
   assert.equal((await second).decision, "confirmed");
+});
+
+// A script can reach the button. `element.click()` produces an untrusted event,
+// and an untrusted event must never count as a person's confirmation.
+test("a script-dispatched Confirm click does not confirm", async () => {
+  reset();
+  const pending = domConsentSurface({ ...request, timeoutMs: 30 });
+  await tick();
+  confirmButton(dialogs[0]).syntheticClick();
+  assert.equal(dialogs[0].open, true, "the prompt must stay open");
+  assert.deepEqual(await pending, { decision: "timeout" });
+});
+
+// Refusing is always safe, so Decline does not need the same guard.
+test("a script-dispatched Decline click still declines", async () => {
+  reset();
+  const pending = domConsentSurface(request);
+  await tick();
+  declineButton(dialogs[0]).syntheticClick();
+  assert.deepEqual(await pending, { decision: "declined" });
+});
+
+test("a click on the backdrop resolves as closed", async () => {
+  reset();
+  const pending = domConsentSurface(request);
+  await tick();
+  const dialog = dialogs[0];
+  dialog.dispatch("click", { target: dialog, clientX: 20, clientY: 20 });
+  assert.deepEqual(await pending, { decision: "closed" });
+});
+
+// The dialog's own padding also targets the dialog element. Treating that as a
+// backdrop click would dismiss the prompt under a person aiming for a button.
+test("a click on the dialog's padding does not dismiss it", async () => {
+  reset();
+  const pending = domConsentSurface(request);
+  await tick();
+  const dialog = dialogs[0];
+  dialog.dispatch("click", { target: dialog, clientX: 150, clientY: 150 });
+  assert.equal(dialog.open, true);
+  declineButton(dialog).click();
+  assert.deepEqual(await pending, { decision: "declined" });
 });
