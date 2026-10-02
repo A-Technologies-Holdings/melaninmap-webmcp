@@ -211,6 +211,28 @@ test("a consent surface that throws fails CLOSED", async () => {
   assert.equal(thrown.ok, false);
 });
 
+// A surface is consumer code, often plain JavaScript. Whatever it resolves to,
+// the tool must stay well formed: no rejection into the runtime, no unknown
+// value leaking into the refusal code, and never a run of the action.
+for (const [label, value] of [
+  ["undefined", undefined],
+  ["null", null],
+  ["a bare string", "confirmed"],
+  ["an unknown decision", { decision: "yes" }],
+  ["a missing decision", {}],
+]) {
+  test(`a surface resolving ${label} fails CLOSED as a well-formed refusal`, async () => {
+    let ran = false;
+    const result = json(
+      await gated(async () => value, () => {
+        ran = true;
+      }).execute({}),
+    );
+    assert.equal(ran, false);
+    assert.deepEqual(result, consentRefusal("closed"));
+  });
+}
+
 test("the action DOES run once confirmed", async () => {
   let ranOnConfirm = false;
   const confirmed = json(
@@ -465,6 +487,63 @@ test("falls back to document.modelContext when navigator's is empty", () => {
     toolCount: 1,
     style: "bulk",
   });
+});
+
+// provideContext REPLACES the page's tool set. A second scope on a bulk-only
+// host would silently unregister the first, so it is refused instead.
+test("a different scope on a bulk-only host is refused, not allowed to wipe the first", () => {
+  const before = seen.bulk;
+  assert.deepEqual(registerAgentTools([otherTool], { scope: "second-bundle" }), {
+    registered: false,
+    reason: "bulk_conflict",
+  });
+  assert.equal(seen.bulk, before, "provideContext must not be called again");
+});
+
+test("the bulk owner's own scope stays idempotent, not a conflict", () => {
+  assert.deepEqual(registerAgentTools([bulkTool]), {
+    registered: false,
+    reason: "already_registered",
+  });
+});
+
+// provideContext REPLACES the page's tool set. A second scope calling it would
+// silently erase the first scope's tools while both were told they registered,
+// so the first bulk scope owns the page and a different one is refused.
+test("a second scope on a bulk-only host is refused, not allowed to erase the first", () => {
+  const before = seen.bulk;
+  assert.deepEqual(registerAgentTools([otherTool], { scope: "second-bundle" }), {
+    registered: false,
+    reason: "bulk_conflict",
+  });
+  assert.equal(seen.bulk, before, "provideContext must not be called again");
+});
+
+test("the bulk owner's own scope stays idempotent, not a conflict", () => {
+  assert.deepEqual(registerAgentTools([bulkTool]), {
+    registered: false,
+    reason: "already_registered",
+  });
+});
+
+// The conflict exists only because bulk replaces. Incremental registration
+// adds, so a host offering registerTool is unaffected by a prior bulk owner.
+test("a bulk owner does not block incremental registration", () => {
+  let incremental = 0;
+  setModelContext("navigator", {
+    registerTool() {
+      incremental += 1;
+    },
+    provideContext() {
+      throw new Error("bulk must not be used when incremental exists");
+    },
+  });
+  assert.deepEqual(registerAgentTools([otherTool], { scope: "after-bulk" }), {
+    registered: true,
+    toolCount: 1,
+    style: "incremental",
+  });
+  assert.equal(incremental, 1);
 });
 
 test("refusal envelopes are well formed", () => {

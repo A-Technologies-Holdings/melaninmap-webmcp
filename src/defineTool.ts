@@ -190,6 +190,37 @@ export type ConsequentialToolSpec<Args> = Omit<ToolSpec<Args>, "execute"> & {
   execute: (args: Args, consent: ConsentConfirmation) => Promise<unknown>;
 };
 
+const REFUSAL_DECISIONS: ReadonlySet<unknown> = new Set([
+  "declined",
+  "timeout",
+  "closed",
+]);
+
+/**
+ * Narrow whatever the surface resolved to.
+ *
+ * The type says `ConsentResult`, but a surface is consumer code and often
+ * plain JavaScript. Resolving `undefined` would make `decision.decision` throw
+ * into the agent runtime, and an unknown string would leak into the refusal
+ * code as `consent_yes`. Only an object whose `decision` is exactly
+ * `"confirmed"` confirms; a known refusal keeps its meaning; anything else
+ * becomes `closed`. Fail closed, and stay well formed while doing it.
+ */
+function normalizeConsentResult(value: unknown): ConsentResult {
+  if (value === null || typeof value !== "object") {
+    return { decision: "closed" };
+  }
+  const result = value as { decision?: unknown; auditToken?: unknown };
+  if (result.decision === "confirmed") {
+    return typeof result.auditToken === "string"
+      ? { decision: "confirmed", auditToken: result.auditToken }
+      : { decision: "confirmed" };
+  }
+  return REFUSAL_DECISIONS.has(result.decision)
+    ? { decision: result.decision as "declined" | "timeout" | "closed" }
+    : { decision: "closed" };
+}
+
 /**
  * A tool with a consequence. The action runs only after a human confirms in
  * the page. There is no bypass parameter and no "trusted caller" path — if you
@@ -211,10 +242,12 @@ export function defineConsequentialTool<Args>(
       let decision: ConsentResult;
       try {
         const request = spec.describeConsent(args);
-        decision = await spec.consent({
-          timeoutMs: CONSENT_DEFAULT_TIMEOUT_MS,
-          ...request,
-        });
+        decision = normalizeConsentResult(
+          await spec.consent({
+            timeoutMs: CONSENT_DEFAULT_TIMEOUT_MS,
+            ...request,
+          }),
+        );
       } catch {
         // A consent surface that fails is a consent surface that did not
         // confirm. Fail closed, always.

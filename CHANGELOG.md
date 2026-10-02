@@ -31,3 +31,10 @@ First public release.
 - `npm test` builds before it runs, so the suite works from a fresh clone;
   the README states the package is ESM-only; Dependabot keeps the
   devDependencies current.
+- A consent surface resolving anything but a well-formed `ConsentResult`
+  (`undefined`, `null`, an unknown decision) now fails closed as a
+  well-formed `consent_closed` refusal instead of rejecting into the agent
+  runtime.
+- On a bulk-only host, a second registration scope is refused with
+  `reason: "bulk_conflict"` instead of silently replacing the first scope's
+  tools; `RegisterResult` gains that reason.

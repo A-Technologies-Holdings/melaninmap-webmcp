@@ -92,6 +92,41 @@ function clearRegistered(scope: string): void {
   }
 }
 
+const BULK_OWNER_FLAG = "__webmcpAgentToolsBulkScope";
+
+/**
+ * The scope that owns the page's bulk registration, if any.
+ *
+ * `provideContext` does not add tools: it replaces the page's whole tool set.
+ * Per-scope idempotence assumes scopes are independent, and on a bulk-only
+ * host they are not — a second scope's call would silently unregister the
+ * first scope's tools while both callers were told `registered: true`. So the
+ * first bulk scope owns the page, and a different scope is refused with
+ * `bulk_conflict` rather than allowed to wipe it. Kept on the global, like the
+ * flag map, so a second bundle on the same page sees the owner too.
+ */
+let bulkOwnerInThisModule: string | null = null;
+
+function readBulkOwner(): string | null {
+  if (bulkOwnerInThisModule !== null) return bulkOwnerInThisModule;
+  try {
+    const value = GLOBAL_KEY[BULK_OWNER_FLAG];
+    if (typeof value === "string") return value;
+  } catch {
+    // Inaccessible global: only the module-level owner is known.
+  }
+  return null;
+}
+
+function markBulkOwner(scope: string): void {
+  bulkOwnerInThisModule = scope;
+  try {
+    GLOBAL_KEY[BULK_OWNER_FLAG] = scope;
+  } catch {
+    // The module-level owner still holds for this evaluation.
+  }
+}
+
 /** Frees the scope's idempotence flags when its registration signal aborts. */
 function releaseOnAbort(signal: AbortSignal | undefined, scope: string): void {
   if (!signal) return;
@@ -158,7 +193,10 @@ export function detectModelContext(): DetectedModelContext | null {
 }
 
 export type RegisterAgentToolsOptions = {
-  /** Scope the registration to this signal's lifetime where the host allows. */
+  /**
+   * Scope the registration to this signal's lifetime. Only the incremental
+   * style accepts it; on a bulk-only host the tools live for the page.
+   */
   signal?: AbortSignal;
   /**
    * Idempotence scope. Defaults to the sorted tool names, so re-registering
@@ -171,7 +209,12 @@ export type RegisterAgentToolsOptions = {
 export type RegisterResult =
   | {
       registered: false;
-      reason: "unsupported" | "already_registered" | "aborted";
+      reason:
+        | "unsupported"
+        | "already_registered"
+        | "aborted"
+        /** A bulk-only host already holds a different scope's tool set. */
+        | "bulk_conflict";
     }
   | {
       registered: false;
@@ -262,8 +305,16 @@ export function registerAgentTools(
       };
     }
     if (host.provideContext) {
+      // Bulk replaces, so a second scope would erase the first. See
+      // readBulkOwner. The bulk style also takes no `{ signal }`: these tools
+      // live for the page, and an abort does not release this scope.
+      const owner = readBulkOwner();
+      if (owner !== null && owner !== scope) {
+        return { registered: false, reason: "bulk_conflict" };
+      }
       host.provideContext({ tools: [...tools] });
       markRegistered(scope);
+      markBulkOwner(scope);
       return { registered: true, toolCount: tools.length, style: "bulk" };
     }
   } catch {

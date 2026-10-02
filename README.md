@@ -133,6 +133,13 @@ no-op, while a different set on the same page registers independently. Pass
 `{ scope }` to name a registration explicitly, and `{ signal }` to release the
 scope when an owning controller aborts.
 
+Both of those assume the incremental `registerTool` style. A host that offers
+only the bulk `provideContext` style *replaces* the page's tool set on every
+call, so scopes there cannot be independent: the first scope to register owns
+the page, and a different scope gets `{ registered: false, reason:
+"bulk_conflict" }` instead of silently erasing the first scope's tools. The bulk
+style takes no `{ signal }`, so its tools live for the page.
+
 ## Writing tool descriptions
 
 The description is the interface. A model that has never seen your site reads it
