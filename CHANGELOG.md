@@ -38,3 +38,6 @@ First public release.
 - On a bulk-only host, a second registration scope is refused with
   `reason: "bulk_conflict"` instead of silently replacing the first scope's
   tools; `RegisterResult` gains that reason.
+- `examples/domConsentSurface` ignores untrusted (script-dispatched) Confirm
+  clicks, and a click on the backdrop now resolves `closed` as its header
+  always claimed.

@@ -5,8 +5,14 @@
  *
  * - It mounts into the page the person is actually looking at.
  * - Confirm and decline are separate, deliberate controls. Dismissing the
- *   dialog (Escape, backdrop, the close control) is a decline, never a
+ *   dialog (Escape, a click on the backdrop, a programmatic close) is never a
  *   confirm — the safe answer must be the easy one.
+ * - **Confirm ignores clicks the browser did not originate.** A script calling
+ *   `confirmButton.click()` dispatches an event with `isTrusted === false`;
+ *   only a real input event confirms. This raises the bar for page scripts —
+ *   it is not proof a human acted, and the server must still not authorize on
+ *   it (see SECURITY.md). Decline stays callable either way: refusing is
+ *   always safe.
  * - **Initial focus lands on Decline, never Confirm.** An agent can open this
  *   dialog at any moment, including mid-keystroke. If Confirm held focus, a
  *   person's next Enter press would authorise a consequential action they had
@@ -60,19 +66,33 @@ function prompt(request: ConsentRequest): Promise<ConsentResult> {
     const confirm = document.createElement("button");
     confirm.type = "button";
     confirm.textContent = request.confirmLabel;
-    confirm.addEventListener("click", () =>
-      finish({ decision: "confirmed", auditToken: randomToken() }),
-    );
+    confirm.addEventListener("click", (event) => {
+      if (!event.isTrusted) return;
+      finish({ decision: "confirmed", auditToken: randomToken() });
+    });
 
     const decline = document.createElement("button");
     decline.type = "button";
     decline.textContent = "Not now";
     decline.addEventListener("click", () => finish({ decision: "declined" }));
 
-    // Escape and backdrop dismissal both land here. Dismissal is never consent.
+    // Escape. Dismissal is never consent.
     dialog.addEventListener("cancel", (event) => {
       event.preventDefault();
       finish({ decision: "closed" });
+    });
+    // A click on the ::backdrop targets the dialog itself — but so does a click
+    // on the dialog's own padding, so the pointer must also fall outside the
+    // dialog's box before it counts as a backdrop dismissal.
+    dialog.addEventListener("click", (event) => {
+      if (event.target !== dialog) return;
+      const box = dialog.getBoundingClientRect();
+      const outside =
+        event.clientX < box.left ||
+        event.clientX > box.right ||
+        event.clientY < box.top ||
+        event.clientY > box.bottom;
+      if (outside) finish({ decision: "closed" });
     });
     dialog.addEventListener("close", () => finish({ decision: "closed" }));
 
