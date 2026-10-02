@@ -23,12 +23,12 @@ reference file compiling. Read it, copy from it, restyle it.
 
 ## Three details that matter more than they look
 
-**The consent token constant never leaves the card module.** It is not exported.
-Tool code receives it only as the resolution value of a confirmation the person
-actually clicked. That is a *structural* guarantee inside the page — a bug in
-tool code cannot fabricate a confirmation, because it has no way to name the
-value. It is emphatically **not** a server-side authorization credential; see
-[`../SECURITY.md`](../SECURITY.md), which is blunt about the difference.
+**The consent token constant is not exported from the card module.** Ordinary
+registrar code receives it through the consent bridge. This is module hygiene:
+the value is public and the bridge resolver is exported, so a deliberate page
+script can fabricate the signal. Confirm ignores untrusted click events before
+opening a placeholder tab. Neither that check nor the token proves human
+presence or authorizes a server action; see [`../SECURITY.md`](../SECURITY.md).
 
 **Focus starts on Decline.** Enter must never be an accidental consent. Escape
 and a backdrop click both decline. The safe answer is the easy one.

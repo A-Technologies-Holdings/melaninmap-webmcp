@@ -102,6 +102,19 @@ if (deadInternal === 0) {
   console.log(`ok   all ${internalRefs.length} internal openapi.yaml $refs resolve`);
 }
 
+// Validate tool mentions in prose/comments, including removed or misspelled names.
+// Restrict to tool verb prefixes; refusal codes and HTTP operationIds are separate.
+const names = new Set(contract.tools.map((tool) => tool.name));
+const source = readFileSync(openapiPath, "utf8");
+const mentions = new Set(source.match(/\b(?:search_|get_|check_|record_|request_)[a-z]+(?:_[a-z]+)*\b/g) ?? []);
+for (const name of mentions) {
+  if (!names.has(name)) {
+    failures += 1;
+    console.error(`FAIL unknown WebMCP tool mention: ${name}`);
+  }
+}
+console.log(`ok   checked ${mentions.size} WebMCP tool mentions`);
+
 if (failures > 0) {
   console.error(`\n${failures} check(s) failed.`);
   process.exit(1);

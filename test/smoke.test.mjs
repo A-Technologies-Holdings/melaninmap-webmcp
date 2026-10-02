@@ -507,25 +507,6 @@ test("the bulk owner's own scope stays idempotent, not a conflict", () => {
   });
 });
 
-// provideContext REPLACES the page's tool set. A second scope calling it would
-// silently erase the first scope's tools while both were told they registered,
-// so the first bulk scope owns the page and a different one is refused.
-test("a second scope on a bulk-only host is refused, not allowed to erase the first", () => {
-  const before = seen.bulk;
-  assert.deepEqual(registerAgentTools([otherTool], { scope: "second-bundle" }), {
-    registered: false,
-    reason: "bulk_conflict",
-  });
-  assert.equal(seen.bulk, before, "provideContext must not be called again");
-});
-
-test("the bulk owner's own scope stays idempotent, not a conflict", () => {
-  assert.deepEqual(registerAgentTools([bulkTool]), {
-    registered: false,
-    reason: "already_registered",
-  });
-});
-
 // The conflict exists only because bulk replaces. Incremental registration
 // adds, so a host offering registerTool is unaffected by a prior bulk owner.
 test("a bulk owner does not block incremental registration", () => {

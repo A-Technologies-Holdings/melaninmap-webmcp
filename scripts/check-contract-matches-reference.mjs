@@ -22,10 +22,8 @@
  *   1. published tools.json  ==  reference/registerAgentTools.ts (deep)
  *   2. reference/registerAgentTools.ts  ==  the live landing registrar
  *
- * Check 2 only runs inside the monorepo. Once this package is extracted to its
- * own public repo the live registrar is not there to compare against, and the
- * gate skips it rather than failing — the published package must stay
- * self-checking on its own.
+ * Check 2 runs when WEBMCP_LIVE_REGISTRAR names a private registrar file.
+ * Unset means private parity is NOT RUN; an invalid configured path fails.
  *
  * Run: npm run check:contract
  */
@@ -41,8 +39,12 @@ const contract = JSON.parse(
 );
 
 const REFERENCE = join(root, "reference/registerAgentTools.ts");
-// Only present in the monorepo; absent once the package is published alone.
-const LIVE = join(root, "../../landing-site/client/src/webmcp/registerAgentTools.ts");
+// Optional private checkout; an explicit but missing path must fail closed.
+const LIVE = process.env.WEBMCP_LIVE_REGISTRAR;
+if (LIVE && !existsSync(LIVE)) {
+  console.error("FAIL WEBMCP_LIVE_REGISTRAR does not exist");
+  process.exit(1);
+}
 
 /** Strip comments so an object literal can be evaluated. Not inside strings. */
 function stripComments(text) {
@@ -228,7 +230,7 @@ for (const tool of contract.tools) {
   console.error(`  deployed:  ${show(deployed)}`);
 }
 
-if (existsSync(LIVE)) {
+if (LIVE) {
   const liveSource = readFileSync(LIVE, "utf8");
   const liveNames = extractRegisteredToolNames(liveSource);
   // Mirror the reference side exactly. An unreadable registration array must
@@ -272,7 +274,7 @@ if (existsSync(LIVE)) {
     console.error(`  reference: ${show(ref)}`);
   }
 } else {
-  console.log("\nskip live-registrar parity: standalone package, no monorepo path");
+  console.log("\nskip live-registrar parity: WEBMCP_LIVE_REGISTRAR unset (private parity NOT RUN)");
 }
 
 if (failures > 0) {

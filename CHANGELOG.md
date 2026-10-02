@@ -41,3 +41,9 @@ First public release.
 - `examples/domConsentSurface` ignores untrusted (script-dispatched) Confirm
   clicks, and a click on the backdrop now resolves `closed` as its header
   always claimed.
+- The React reference card rejects untrusted Confirm clicks before opening a
+  tab; reference refusals include no-retry guidance and token documentation
+  describes module hygiene rather than an authentication guarantee.
+- OpenAPI tool mentions are checked for drift. Private registrar parity uses
+  `WEBMCP_LIVE_REGISTRAR` and fails when a configured path is missing.
+- Public CI runs the full package gate and checks commit DCO trailers.

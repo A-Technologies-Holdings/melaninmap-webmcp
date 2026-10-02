@@ -6,7 +6,7 @@ info:
     name: MIT
     url: https://github.com/A-Technologies-Holdings/melaninmap-webmcp/blob/main/LICENSE
   description: |
-    The HTTP surface behind the five WebMCP tools registered by
+    The seven HTTP endpoints behind the five WebMCP tools registered by
     melaninmap.app. Published so an agent author can read the contract without
     executing the page.
 
@@ -16,15 +16,14 @@ info:
     continuity, NOT as a credential — see SECURITY.md before you copy this
     shape, because the server-side controls are the part that matters.
 
-    Two endpoints write. `/agent/action` records an attributed follow-through.
-    `/agent/handoff` creates an attributed journey to a ticketing destination
-    after `/agent/handoff-consent` exchanges the page's visible confirmation
-    signal for a short-lived, operation-bound server proof. Both write lanes
-    refuse without a `recommendationId` the server minted for that same
-    installation, so `/agent/search` is the entry point for every write path.
+    Four endpoints change state: `/agent/action` records follow-through,
+    `/agent/handoff-consent` issues an operation-bound proof, `/agent/handoff`
+    creates an attributed journey, and `/agent/handoff-open` redeems it.
+    Action, consent and create bind to a server-minted recommendation for the
+    installation; open binds to the installation and journey token.
 servers:
   # The public agent paths are `/agent/*`, which is what llms.txt advertises and
-  # what this document describes. `vercel.json` rewrites all five to the
+  # what this document describes. `vercel.json` rewrites all seven to the
   # `/api/agent/*` handlers, so `https://melaninmap.app/agent/search` resolves.
   # The page's own client calls `/api/agent/*` directly because it is
   # same-origin and skips the rewrite; both reach the same handler.
@@ -588,7 +587,7 @@ components:
 
         `network_error` — the request never completed; every tool can return it.
         `invalid_arguments` — the model's arguments failed the tool's own parse;
-        returned by get_business_details, check_verification_status,
+        returned by get_business_details, check_ownership_verification,
         record_interest and request_event_handoff.
         `busy` / `user_declined` — consent outcomes, so request_event_handoff
         only. A decline is a normal result, not an error.
@@ -596,6 +595,7 @@ components:
       required: [ok, code]
       properties:
         ok: { const: false }
+        message: { type: string, description: Optional guidance for the model after a refusal. }
         code:
           # Deliberately NOT a closed enum. `errorEnvelope` relays
           # `AgentGatewayApiError.code`, which `postJson` builds as
@@ -606,7 +606,7 @@ components:
           #
           #   Client-side, no request made:
           #     network_error      — every tool
-          #     invalid_arguments  — get_business_details, check_verification_status,
+          #     invalid_arguments  — get_business_details, check_ownership_verification,
           #                          record_interest, request_event_handoff
           #     busy, user_declined — consent outcomes; request_event_handoff only
           #

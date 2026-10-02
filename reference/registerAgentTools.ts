@@ -477,10 +477,10 @@ const handoffTool: ModelContextTool = {
     const outcome = await requestHandoffConsent({ targetName });
 
     if (outcome.status === "busy") {
-      return toToolResult({ ok: false, code: "busy" });
+      return toToolResult({ ok: false, code: "busy", message: "A confirmation is already open. Do not retry automatically; wait for the person to answer." });
     }
     if (outcome.status !== "confirmed") {
-      return toToolResult({ ok: false, code: "user_declined" });
+      return toToolResult({ ok: false, code: "user_declined", message: "The person declined or did not answer the hand-off confirmation. Do not retry automatically. Ask what they would prefer instead." });
     }
 
     try {
