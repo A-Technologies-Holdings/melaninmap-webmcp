@@ -2,9 +2,9 @@
  * Feature-detected registration against the proposed Web Model Context API.
  *
  * `navigator.modelContext` / `document.modelContext` is a browser proposal,
- * not a shipped standard. Nothing here may assume it exists: in every browser
- * shipping today `registerAgentTools` is a silent no-op that costs one
- * property read. Load it lazily, after your app has mounted, so a change in
+ * not a shipped standard. Nothing here may assume it exists: unsupported
+ * browsers receive a silent no-op. Experimental browser support is detected
+ * rather than inferred from user-agent strings. Load it lazily, after your app has mounted, so a change in
  * the proposal can never break your page.
  */
 
@@ -15,133 +15,56 @@ import type {
   ModelContextTool,
 } from "./types.js";
 
-const GLOBAL_FLAG = "__webmcpAgentToolsRegistered";
-
-/**
- * Scopes registered in this module evaluation. One flag used to mean "this
- * page is done" — fine for a single consumer, wrong for a library: a second
- * bundle on the same page (host app plus an embedded widget, say) would see
- * the flag and never register its own tools. Registration is therefore keyed
- * per scope — by default the sorted tool names, so a StrictMode/HMR remount
- * of the same tool set still dedupes while an unrelated set registers freely.
- */
-const registeredInThisModule = new Set<string>();
-
-const GLOBAL_KEY =
-  globalThis as unknown as Record<string, unknown>;
-
-type FlagMap = Record<string, boolean>;
-
-function readFlagMap(): FlagMap {
+type HostState = { scopes: Set<string>; names: Set<string>; bulkOwner?: string };
+const registryKey = Symbol.for("@melaninmap/webmcp-consent/hosts/v2");
+const globals = globalThis as unknown as Record<symbol, unknown>;
+const localRegistry = new WeakMap<object, HostState>();
+function stateFor(identity: object): HostState {
+  let registry = localRegistry;
   try {
-    const value = GLOBAL_KEY[GLOBAL_FLAG];
-    // A `true` left by an earlier version of this package means "something
-    // registered, scope unknown" — the safe reading is that every scope is
-    // taken, recorded under a wildcard key.
-    if (value === true) return { "*": true };
-    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-      return value as FlagMap;
+    const existing = globals[registryKey];
+    if (existing instanceof WeakMap) registry = existing;
+    else globals[registryKey] = registry;
+  } catch { /* Local deduplication still works when globals are locked. */ }
+  let state = registry.get(identity);
+  if (!state) { state = { scopes: new Set(), names: new Set() }; registry.set(identity, state); }
+  // Legacy bundles used page-global scopes without host identity. Preserve them
+  // conservatively on every detected host while those bundles remain loaded.
+  try {
+    const legacy = (globalThis as unknown as Record<string, unknown>).__webmcpAgentToolsRegistered;
+    if (legacy === true) state.scopes.add("*");
+    else if (legacy && typeof legacy === "object") {
+      for (const [scope, active] of Object.entries(legacy)) {
+        if (active !== true) continue;
+        state.scopes.add(scope);
+        try {
+          const names: unknown = JSON.parse(scope);
+          if (Array.isArray(names) && names.every(name => typeof name === "string")) names.forEach(name => state!.names.add(name));
+          else state.scopes.add("*");
+        } catch { state.scopes.add("*"); }
+      }
     }
-  } catch {
-    // Inaccessible global: treat as unset.
-  }
-  return {};
+  } catch { /* Locked legacy globals must not throw into the page. */ }
+  return state;
 }
-
-/**
- * The idempotence scope for one call. Callers may name one explicitly; the
- * default is derived from the sorted tool names so that re-registering the
- * SAME tools dedupes (StrictMode double-mount, HMR) while a different set on
- * the same page registers independently.
- */
-function registrationScope(
-  tools: readonly ModelContextTool[],
-  options?: RegisterAgentToolsOptions,
-): string {
-  if (typeof options?.scope === "string" && options.scope) {
-    return options.scope;
-  }
-  return JSON.stringify([...new Set(tools.map((tool) => tool.name))].sort());
+function registrationScope(tools: readonly ModelContextTool[], options?: RegisterAgentToolsOptions): string {
+  return options?.scope || JSON.stringify([...new Set(tools.map(tool => tool.name))].sort());
 }
-
-function alreadyRegistered(scope: string): boolean {
-  if (registeredInThisModule.has(scope)) return true;
-  const flags = readFlagMap();
-  return flags["*"] === true || flags[scope] === true;
+function markRegistered(state: HostState, scope: string, names: string[]): void {
+  state.scopes.add(scope);
+  names.forEach(name => state.names.add(name));
 }
-
-function markRegistered(scope: string): void {
-  registeredInThisModule.add(scope);
-  try {
-    const flags = readFlagMap();
-    flags[scope] = true;
-    GLOBAL_KEY[GLOBAL_FLAG] = flags;
-  } catch {
-    // The module-level flag still holds for this evaluation.
-  }
-}
-
-function clearRegistered(scope: string): void {
-  registeredInThisModule.delete(scope);
-  try {
-    const flags = readFlagMap();
-    delete flags[scope];
-    GLOBAL_KEY[GLOBAL_FLAG] = flags;
-  } catch {
-    // The module-level flag is already cleared for this evaluation.
-  }
-}
-
-const BULK_OWNER_FLAG = "__webmcpAgentToolsBulkScope";
-
-/**
- * The scope that owns the page's bulk registration, if any.
- *
- * `provideContext` does not add tools: it replaces the page's whole tool set.
- * Per-scope idempotence assumes scopes are independent, and on a bulk-only
- * host they are not — a second scope's call would silently unregister the
- * first scope's tools while both callers were told `registered: true`. So the
- * first bulk scope owns the page, and a different scope is refused with
- * `bulk_conflict` rather than allowed to wipe it. Kept on the global, like the
- * flag map, so a second bundle on the same page sees the owner too.
- */
-let bulkOwnerInThisModule: string | null = null;
-
-function readBulkOwner(): string | null {
-  if (bulkOwnerInThisModule !== null) return bulkOwnerInThisModule;
-  try {
-    const value = GLOBAL_KEY[BULK_OWNER_FLAG];
-    if (typeof value === "string") return value;
-  } catch {
-    // Inaccessible global: only the module-level owner is known.
-  }
-  return null;
-}
-
-function markBulkOwner(scope: string): void {
-  bulkOwnerInThisModule = scope;
-  try {
-    GLOBAL_KEY[BULK_OWNER_FLAG] = scope;
-  } catch {
-    // The module-level owner still holds for this evaluation.
-  }
-}
-
-/** Frees the scope's idempotence flags when its registration signal aborts. */
-function releaseOnAbort(signal: AbortSignal | undefined, scope: string): void {
-  if (!signal) return;
-  try {
-    signal.addEventListener("abort", () => clearRegistered(scope), {
-      once: true,
-    });
-  } catch {
-    // No listener support: the flags simply stay set, which is the old
-    // behavior rather than a new failure.
-  }
+function releaseOnAbort(signal: AbortSignal | undefined, state: HostState, scope: string, names: string[]): void {
+  const release = () => {
+    state.scopes.delete(scope);
+    names.forEach(name => state.names.delete(name));
+  };
+  if (signal?.aborted) release();
+  else signal?.addEventListener("abort", release, { once: true });
 }
 
 /** Narrow one candidate host object, or null if it registers nothing. */
-function narrowModelContext(candidate: unknown): DetectedModelContext | null {
+function narrowModelContext(candidate: unknown): (DetectedModelContext & { identity: object }) | null {
   if (typeof candidate !== "object" || candidate === null) return null;
 
   const host = candidate as Record<string, unknown>;
@@ -152,6 +75,7 @@ function narrowModelContext(candidate: unknown): DetectedModelContext | null {
   if (!hasRegister && !hasProvide) return null;
 
   return {
+    identity: candidate,
     registerTool: hasRegister
       ? (registerTool as ModelContextRegisterTool).bind(candidate)
       : undefined,
@@ -177,19 +101,20 @@ function narrowModelContext(candidate: unknown): DetectedModelContext | null {
  * and independently, so a navigator object that exists but exposes no
  * registrar does not mask a working document-level one.
  */
+function detectHost(): (DetectedModelContext & { identity: object }) | null {
+  for (const target of ["navigator", "document"] as const) {
+    try {
+      const surface = (globalThis as unknown as Record<string, { modelContext?: unknown }>)[target];
+      const host = narrowModelContext(surface?.modelContext);
+      if (host) return host;
+    } catch { /* A blocked getter must not prevent fallback or break the page. */ }
+  }
+  return null;
+}
 export function detectModelContext(): DetectedModelContext | null {
-  const fromNavigator =
-    typeof navigator !== "undefined"
-      ? narrowModelContext(
-          (navigator as Navigator & { modelContext?: unknown }).modelContext,
-        )
-      : null;
-  if (fromNavigator) return fromNavigator;
-  return typeof document !== "undefined"
-    ? narrowModelContext(
-        (document as Document & { modelContext?: unknown }).modelContext,
-      )
-    : null;
+  const host = detectHost();
+  if (!host) return null;
+  return { registerTool: host.registerTool, provideContext: host.provideContext };
 }
 
 export type RegisterAgentToolsOptions = {
@@ -214,7 +139,9 @@ export type RegisterResult =
         | "already_registered"
         | "aborted"
         /** A bulk-only host already holds a different scope's tool set. */
-        | "bulk_conflict";
+        | "bulk_conflict"
+        | "tool_conflict"
+        | "async_registration_pending";
     }
   | {
       registered: false;
@@ -240,16 +167,19 @@ export function registerAgentTools(
     return { registered: false, reason: "aborted" };
   }
 
-  const scope = registrationScope(tools, options);
-  if (alreadyRegistered(scope)) {
-    return { registered: false, reason: "already_registered" };
-  }
-
-  const host = detectModelContext();
+  const host = detectHost();
   if (!host) return { registered: false, reason: "unsupported" };
+  const state = stateFor(host.identity);
+  const scope = registrationScope(tools, options);
+  if (state.scopes.has("*") || state.scopes.has(scope)) return { registered: false, reason: "already_registered" };
+  const names = tools.map(tool => tool.name);
+  if (new Set(names).size !== names.length || names.some(name => state.names.has(name))) {
+    return { registered: false, reason: "tool_conflict" };
+  }
 
   let registeredToolCount = 0;
   let allSuccessfulRegistrationsScoped = true;
+  let asyncRegistrationPending = false;
   try {
     if (host.registerTool) {
       // Whether EVERY tool ended up scoped to the caller's signal. The
@@ -272,16 +202,26 @@ export function registerAgentTools(
         : undefined;
       for (const tool of tools) {
         try {
-          host.registerTool(tool, hostOptions);
+          const result = host.registerTool(tool, hostOptions);
+          if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+            asyncRegistrationPending = true;
+            // The compatibility API cannot report acceptance before it settles.
+            // Observe rejections and retain ownership so callers cannot blindly retry.
+            void Promise.resolve(result).catch(() => undefined);
+          }
         } catch {
           // Some implementations reject an unknown options bag. Retry bare
           // rather than lose the whole registration over it.
-          host.registerTool(tool);
+          const result = host.registerTool(tool);
+          if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+            asyncRegistrationPending = true;
+            void Promise.resolve(result).catch(() => undefined);
+          }
           allSuccessfulRegistrationsScoped = false;
         }
         registeredToolCount += 1;
       }
-      markRegistered(scope);
+      markRegistered(state, scope, names.slice(0, registeredToolCount));
       // The idempotence flags exist to survive StrictMode double-invocation and
       // HMR. When the caller scopes registration to a signal, a conforming host
       // DROPS the tools on abort — and if the flags stayed set, the next mount
@@ -296,8 +236,9 @@ export function registerAgentTools(
       // failure on a host that enforces unique names. Keeping the flags set is
       // the safe side of that trade.
       if (allSuccessfulRegistrationsScoped) {
-        releaseOnAbort(options?.signal, scope);
+        releaseOnAbort(options?.signal, state, scope, names.slice(0, registeredToolCount));
       }
+      if (asyncRegistrationPending) return { registered: false, reason: "async_registration_pending" };
       return {
         registered: true,
         toolCount: tools.length,
@@ -308,13 +249,18 @@ export function registerAgentTools(
       // Bulk replaces, so a second scope would erase the first. See
       // readBulkOwner. The bulk style also takes no `{ signal }`: these tools
       // live for the page, and an abort does not release this scope.
-      const owner = readBulkOwner();
+      const owner = state.bulkOwner ?? null;
       if (owner !== null && owner !== scope) {
         return { registered: false, reason: "bulk_conflict" };
       }
-      host.provideContext({ tools: [...tools] });
-      markRegistered(scope);
-      markBulkOwner(scope);
+      const result = host.provideContext({ tools: [...tools] });
+      if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+        asyncRegistrationPending = true;
+        void Promise.resolve(result).catch(() => undefined);
+      }
+      markRegistered(state, scope, names);
+      state.bulkOwner = scope;
+      if (asyncRegistrationPending) return { registered: false, reason: "async_registration_pending" };
       return { registered: true, toolCount: tools.length, style: "bulk" };
     }
   } catch {
@@ -323,9 +269,9 @@ export function registerAgentTools(
       // retry would duplicate the tools that already landed (and potentially
       // duplicate consent prompts), so retain the idempotence flag and report
       // the partial state explicitly instead of pretending nothing happened.
-      markRegistered(scope);
+      markRegistered(state, scope, names.slice(0, registeredToolCount));
       if (allSuccessfulRegistrationsScoped) {
-        releaseOnAbort(options?.signal, scope);
+        releaseOnAbort(options?.signal, state, scope, names.slice(0, registeredToolCount));
       }
       return {
         registered: false,
@@ -337,4 +283,56 @@ export function registerAgentTools(
   }
 
   return { registered: false, reason: "unsupported" };
+}
+
+/**
+ * Promise-aware registration for the current browser draft. Reservations are
+ * made before awaiting the host, so concurrent mounts cannot publish twice.
+ * Rejections are surfaced without retrying a possibly consequential host call.
+ */
+export async function registerAgentToolsAsync(
+  tools: readonly ModelContextTool[],
+  options?: RegisterAgentToolsOptions,
+): Promise<RegisterResult> {
+  if (options?.signal?.aborted) return { registered: false, reason: "aborted" };
+  const host = detectHost();
+  if (!host) return { registered: false, reason: "unsupported" };
+  const state = stateFor(host.identity);
+  const scope = registrationScope(tools, options);
+  if (state.scopes.has("*") || state.scopes.has(scope)) return { registered: false, reason: "already_registered" };
+  const names = tools.map(tool => tool.name);
+  if (new Set(names).size !== names.length || names.some(name => state.names.has(name))) {
+    return { registered: false, reason: "tool_conflict" };
+  }
+  if (!host.registerTool && state.bulkOwner !== undefined) {
+    return { registered: false, reason: "bulk_conflict" };
+  }
+  markRegistered(state, scope, names);
+  // Bulk replaces the entire set; reserve the host while that promise is pending.
+  if (!host.registerTool) state.bulkOwner = scope;
+  let count = 0;
+  try {
+    if (host.registerTool) {
+      for (const tool of tools) {
+        if (options?.signal?.aborted) break;
+        await host.registerTool(tool, options?.signal ? { signal: options.signal } : undefined);
+        count += 1;
+      }
+      releaseOnAbort(options?.signal, state, scope, names);
+      if (options?.signal?.aborted) return { registered: false, reason: "aborted" };
+      return { registered: true, toolCount: count, style: "incremental" };
+    }
+    await host.provideContext!({ tools: [...tools] });
+    return { registered: true, toolCount: tools.length, style: "bulk" };
+  } catch {
+    // Release names known not to have landed; retain scope and landed names on partial success.
+    names.slice(count).forEach(name => state.names.delete(name));
+    if (count === 0) {
+      state.scopes.delete(scope);
+      if (state.bulkOwner === scope) delete state.bulkOwner;
+      return { registered: false, reason: "unsupported" };
+    }
+    releaseOnAbort(options?.signal, state, scope, names.slice(0, count));
+    return { registered: false, reason: "partial_registration", toolCount: count };
+  }
 }

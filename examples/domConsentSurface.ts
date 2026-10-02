@@ -29,6 +29,8 @@ import type { ConsentRequest, ConsentResult, ConsentSurface } from "../src/index
 import { CONSENT_DEFAULT_TIMEOUT_MS } from "../src/index.js";
 
 let pending: Promise<unknown> = Promise.resolve();
+let queued = 0;
+const MAX_PENDING_PROMPTS = 3;
 
 function randomToken(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -37,7 +39,8 @@ function randomToken(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
-function prompt(request: ConsentRequest): Promise<ConsentResult> {
+function prompt(request: ConsentRequest, signal?: AbortSignal): Promise<ConsentResult> {
+  if (signal?.aborted) return Promise.resolve({ decision: "closed" });
   return new Promise<ConsentResult>((resolve) => {
     let settled = false;
     const dialog = document.createElement("dialog");
@@ -47,11 +50,13 @@ function prompt(request: ConsentRequest): Promise<ConsentResult> {
       if (settled) return;
       settled = true;
       window.clearTimeout(timer);
-      dialog.close();
-      dialog.remove();
-      resolve(result);
+      signal?.removeEventListener("abort", cancel);
+      try { dialog.close(); } catch { /* Dismissal is still final if the host dialog fails. */ }
+      finally { dialog.remove(); resolve(result); }
     };
 
+    const cancel = () => finish({ decision: "closed" });
+    signal?.addEventListener("abort", cancel, { once: true });
     const timer = window.setTimeout(
       () => finish({ decision: "timeout" }),
       request.timeoutMs ?? CONSENT_DEFAULT_TIMEOUT_MS,
@@ -98,7 +103,8 @@ function prompt(request: ConsentRequest): Promise<ConsentResult> {
 
     dialog.append(title, detail, confirm, decline);
     document.body.appendChild(dialog);
-    dialog.showModal();
+    try { dialog.showModal(); }
+    catch { finish({ decision: "closed" }); return; }
     // Deliberately the safe control. See the note above; the deployed card in
     // reference/HandoffConsentCard.tsx does the same thing for the same reason.
     decline.focus();
@@ -106,8 +112,38 @@ function prompt(request: ConsentRequest): Promise<ConsentResult> {
 }
 
 /** Serializes prompts so concurrent tool calls queue instead of stacking. */
-export const domConsentSurface: ConsentSurface = (request) => {
-  const next = pending.then(() => prompt(request));
-  pending = next.catch(() => undefined);
-  return next;
+export const domConsentSurface: ConsentSurface = (request, options = {}) => {
+  const timeoutMs = request.timeoutMs ?? CONSENT_DEFAULT_TIMEOUT_MS;
+  if (queued >= MAX_PENDING_PROMPTS || options.signal?.aborted ||
+      !Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
+    return Promise.resolve({ decision: "closed" });
+  }
+  const deadline = Date.now() + timeoutMs;
+  queued += 1;
+  const controller = new AbortController();
+  let settled = false;
+  let finish!: (value: ConsentResult) => void;
+  const answer = new Promise<ConsentResult>(resolve => {
+    finish = value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", cancel);
+      resolve(value);
+      controller.abort();
+    };
+  });
+  const cancel = () => finish({ decision: "closed" });
+  const timer = setTimeout(() => finish({ decision: "timeout" }), timeoutMs);
+  options.signal?.addEventListener("abort", cancel, { once: true });
+  if (options.signal?.aborted) cancel();
+  const next = pending.then(async () => {
+    if (settled) return;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) { finish({ decision: "timeout" }); return; }
+    try { finish(await prompt({ ...request, timeoutMs: remaining }, controller.signal)); }
+    catch { finish({ decision: "closed" }); }
+  });
+  pending = next.finally(() => { queued -= 1; });
+  return answer;
 };

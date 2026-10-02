@@ -79,6 +79,7 @@ export type ConsentResult =
  */
 export type ConsentSurface = (
   request: ConsentRequest,
+  options?: { signal?: AbortSignal },
 ) => Promise<ConsentResult>;
 
 export const CONSENT_DEFAULT_TIMEOUT_MS = 120_000;

@@ -246,3 +246,29 @@ test("a click on the dialog's padding does not dismiss it", async () => {
   declineButton(dialog).click();
   assert.deepEqual(await pending, { decision: "declined" });
 });
+
+test("a queued prompt expires without ever mounting", async () => {
+  reset();
+  const first = domConsentSurface(request);
+  const second = domConsentSurface({ ...request, timeoutMs: 20 });
+  await tick();
+  assert.deepEqual(await second, { decision: "timeout" });
+  assert.equal(dialogs.length, 1);
+  declineButton(dialogs[0]).click();
+  await first; await tick();
+  assert.equal(dialogs.length, 1);
+});
+
+test("prompt backlog is bounded and cancellation removes the active dialog", async () => {
+  reset();
+  const controller = new AbortController();
+  const first = domConsentSurface(request, { signal: controller.signal });
+  const second = domConsentSurface({ ...request, timeoutMs: 20 });
+  const third = domConsentSurface({ ...request, timeoutMs: 20 });
+  assert.deepEqual(await domConsentSurface(request), { decision: "closed" });
+  await tick();
+  controller.abort();
+  assert.deepEqual(await first, { decision: "closed" });
+  assert.equal(dialogs[0].removed, true);
+  await Promise.all([second, third]); await tick();
+});

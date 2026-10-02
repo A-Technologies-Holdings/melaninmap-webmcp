@@ -39,7 +39,7 @@ npm install github:A-Technologies-Holdings/melaninmap-webmcp
 import {
   defineReadTool,
   defineConsequentialTool,
-  registerAgentTools,
+  registerAgentToolsAsync,
 } from "@melaninmap/webmcp-consent";
 ```
 
@@ -120,7 +120,7 @@ const handoff = defineConsequentialTool({
   execute: (args) => api.handoff(args),
 });
 
-registerAgentTools([search, handoff]);
+await registerAgentToolsAsync([search, handoff]);
 ```
 
 `registerAgentTools` is fully feature-detected. In any browser without either
@@ -248,3 +248,31 @@ MIT. See [LICENSE](./LICENSE). Contributions use the Developer Certificate of
 Origin described in [CONTRIBUTING.md](./CONTRIBUTING.md). The code license does
 not license the Melanin Map or Big Mama names and brand assets; see
 [TRADEMARKS.md](./TRADEMARKS.md).
+
+## Cancellation and consent lifetime
+
+Pass the browser invocation's execution options to `tool.execute(args, { signal })`.
+Read handlers receive those options as their second argument; consequential handlers
+receive them as their third argument, after the consent confirmation. Forward the
+signal to `fetch` and other cancellable work. Registration signals control tool
+availability; execution signals control individual calls.
+
+The gate enforces the prompt deadline even if a custom consent surface never settles.
+Surfaces receive a separate cancellation signal to close their UI when the deadline
+or caller cancellation wins. A late confirmation cannot execute the action.
+The DOM example allows at most three active or queued prompts, and its timeout starts
+when the request enters the queue. Cancelled tool calls return `tool_cancelled`.
+
+Registration bookkeeping is isolated by browser host and tool name. Overlapping
+scopes return `tool_conflict` before touching the host. Browser getter failures are
+optional-feature failures and cannot break the page.
+
+For promise-based browser registration, use `await registerAgentToolsAsync(tools)`.
+It waits for acceptance and reports partial failures without retrying rejected host calls.
+`registerAgentTools` remains the synchronous compatibility API for older prototypes.
+
+To try the local consent playground, run `npm run build && npm run build:test`,
+then `python3 -m http.server 8080` from this repository. Open
+`http://localhost:8080/examples/playground.html`. Its counter is local to the page;
+it exercises human confirmation, five-second expiration, cancellation and the
+bounded queue without provider credentials.
