@@ -195,7 +195,11 @@ export function registerAgentTools(
         } catch {
           // Some implementations reject an unknown options bag. Retry bare
           // rather than lose the whole registration over it.
-          host.registerTool(tool);
+          const result = host.registerTool(tool);
+          if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+            asyncRegistrationPending = true;
+            void Promise.resolve(result).catch(() => undefined);
+          }
           allSuccessfulRegistrationsScoped = false;
         }
         registeredToolCount += 1;
@@ -232,9 +236,14 @@ export function registerAgentTools(
       if (owner !== null && owner !== scope) {
         return { registered: false, reason: "bulk_conflict" };
       }
-      host.provideContext({ tools: [...tools] });
+      const result = host.provideContext({ tools: [...tools] });
+      if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+        asyncRegistrationPending = true;
+        void Promise.resolve(result).catch(() => undefined);
+      }
       markRegistered(state, scope, names);
       state.bulkOwner = scope;
+      if (asyncRegistrationPending) return { registered: false, reason: "async_registration_pending" };
       return { registered: true, toolCount: tools.length, style: "bulk" };
     }
   } catch {

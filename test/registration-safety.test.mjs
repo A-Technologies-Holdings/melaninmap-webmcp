@@ -37,3 +37,17 @@ test('the synchronous compatibility API observes promise rejection without claim
  assert.deepEqual(registerAgentTools([tool('legacy_promise')]),{registered:false,reason:'async_registration_pending'});
  await Promise.resolve();
 });
+test('bare compatibility registration observes rejection without claiming acceptance',async()=>{
+ host({registerTool(_tool,options){if(options)throw TypeError('options unsupported');return Promise.reject(Error('not accepted'))}});
+ const controller=new AbortController();
+ assert.deepEqual(registerAgentTools([tool('bare_promise')],{signal:controller.signal}),{registered:false,reason:'async_registration_pending'});
+ controller.abort();
+ assert.deepEqual(registerAgentTools([tool('bare_promise')]),{registered:false,reason:'already_registered'});
+ await Promise.resolve();
+});
+test('bulk compatibility registration observes rejection without claiming acceptance',async()=>{
+ host({provideContext(){return Promise.reject(Error('not accepted'))}});
+ assert.deepEqual(registerAgentTools([tool('bulk_promise')]),{registered:false,reason:'async_registration_pending'});
+ assert.deepEqual(registerAgentTools([tool('bulk_promise')]),{registered:false,reason:'already_registered'});
+ await Promise.resolve();
+});
