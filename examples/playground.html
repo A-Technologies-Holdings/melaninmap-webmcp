@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebMCP consent playground</title>
+<style>
+body { font: 16px system-ui; max-width: 48rem; margin: 3rem auto; padding: 1rem; }
+button { margin: .25rem; padding: .7rem; } dialog { max-width: 30rem; border-radius: .7rem; }
+pre { white-space: pre-wrap; padding: 1rem; background: #eee; color: #222; }
+</style>
+<h1>Consent playground</h1>
+<p>This local demonstration changes only a counter on this page. Read the prompt, decline it, let it expire, or cancel the invocation. A browser with WebMCP support can also discover the demonstration tool.</p>
+<button id="start">Request counter update</button>
+<button id="cancel">Cancel outstanding calls</button>
+<p>Confirmed updates: <output id="count">0</output></p>
+<pre id="result" aria-live="polite">Ready. Consent expires after five seconds, including queue time.</pre>
+<script type="module">
+import { defineConsequentialTool, registerAgentToolsAsync } from '../dist/index.js';
+import { domConsentSurface } from '../.test-build/examples/domConsentSurface.js';
+const result = document.getElementById('result');
+const controllers = new Set();
+let count = 0;
+const tool = defineConsequentialTool({
+  name: 'demo_counter_update', description: 'Update the demonstration counter after a person confirms in the page. No external action.',
+  inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  parseArgs: args => args && Object.keys(args).length === 0 ? {} : null,
+  consent: domConsentSurface,
+  describeConsent: () => ({title:'Add one to the demonstration counter?',detail:'Only this local page changes. The request expires in five seconds.',confirmLabel:'Add one',timeoutMs:5000}),
+  execute: async () => { count += 1; document.getElementById('count').textContent = String(count); return {ok:true,count}; },
+});
+document.getElementById('start').addEventListener('click', async () => {
+  const controller = new AbortController(); controllers.add(controller);
+  try { result.textContent = JSON.stringify(await tool.execute({}, {signal:controller.signal}), null, 2); }
+  finally { controllers.delete(controller); }
+});
+document.getElementById('cancel').addEventListener('click', () => controllers.forEach(controller => controller.abort()));
+const registered = await registerAgentToolsAsync([tool]);
+if (!registered.registered) result.textContent += '\nBrowser registration: ' + registered.reason + '. Page controls still work.';
+</script>
+</html>

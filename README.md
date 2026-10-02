@@ -270,3 +270,9 @@ optional-feature failures and cannot break the page.
 For promise-based browser registration, use `await registerAgentToolsAsync(tools)`.
 It waits for acceptance and reports partial failures without retrying rejected host calls.
 `registerAgentTools` remains the synchronous compatibility API for older prototypes.
+
+To try the local consent playground, run `npm run build && npm run build:test`,
+then `python3 -m http.server 8080` from this repository. Open
+`http://localhost:8080/examples/playground.html`. Its counter is local to the page;
+it exercises human confirmation, five-second expiration, cancellation and the
+bounded queue without provider credentials.
