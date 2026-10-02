@@ -1,6 +1,6 @@
 # WebMCP CI on Buildkite
 
-Connect this repository to a separate pipeline in the existing RGI Group organization. Bootstrap configuration:
+Pipeline: https://buildkite.com/rgi-group/melaninmap-webmcp in the existing RGI Group organization. Bootstrap configuration:
 
 ```yaml
 steps:
