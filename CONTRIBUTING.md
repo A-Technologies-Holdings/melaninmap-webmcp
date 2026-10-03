@@ -7,7 +7,8 @@ Thank you for helping improve the WebMCP consent gate.
 1. Create a focused branch from `main`.
 2. Run `npm ci --ignore-scripts`.
 3. Run `npm run check`. While iterating, `npm test` builds and runs just the
-   behavioral suite.
+   behavioral suite. If you touch `examples/` or the consent flow, also run
+   `npm run test:browser` (after `npx playwright install chromium` once).
 4. Confirm the change introduces no runtime dependency, secret, private
    application code, Big Mama prompt or voice asset, or user data.
 5. Add a `Signed-off-by` trailer to every commit to certify the

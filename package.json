@@ -48,10 +48,12 @@
     "check:contract": "node scripts/check-contract-matches-reference.mjs",
     "check:openapi": "node scripts/check-openapi-pointers.mjs",
     "check:pack": "publint && attw --pack . --profile esm-only",
-    "check": "npm run typecheck && npm run check:contract && npm run check:openapi && npm run build && npm run build:test && node --test && npm run check:pack"
+    "check": "npm run typecheck && npm run check:contract && npm run check:openapi && npm run build && npm run build:test && node --test && npm run check:pack",
+    "test:browser": "npm run build && npm run build:test && playwright test"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
+    "@playwright/test": "1.63.0",
     "@typescript/typescript6": "6.0.2",
     "publint": "0.3.24",
     "typescript": "7.0.2",
