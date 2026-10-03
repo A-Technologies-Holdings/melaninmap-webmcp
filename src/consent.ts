@@ -91,9 +91,9 @@ export type ConsentResult =
  * - MUST require a distinct affirmative interaction (not a dismiss).
  * - MUST resolve exactly once, and MUST resolve on timeout rather than hang.
  * - MUST NOT be callable by a tool without producing a visible surface.
- * - MAY resolve `busy` immediately, without showing anything, when it cannot
- *   take another request. That is the only outcome allowed to skip the
- *   visible surface, and it never runs the action.
+ * - MAY resolve without showing anything only with a refusal: `busy` when it
+ *   cannot take another request, `closed` when the request is already
+ *   cancelled or cannot be shown. Never `confirmed`.
  */
 export type ConsentSurface = (
   request: ConsentRequest,

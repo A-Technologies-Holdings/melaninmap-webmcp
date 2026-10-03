@@ -33,6 +33,13 @@
  *
  * Like the rest of the package it never throws at call time: every failure
  * resolves a refusal, and a listener that throws cannot break the queue.
+ * (`createConsentQueue` itself throws on an invalid `capacity` — that is
+ * configuration, caught where it is written.)
+ *
+ * Known limit: a person double-clicking Confirm, or holding Enter, can answer
+ * the request that replaces the one they meant, if it renders in the same
+ * place. Remount the prompt per request (key it by `id`) so focus never
+ * carries over, and keep Decline as the focused control.
  */
 
 import {
@@ -74,10 +81,15 @@ export type DisplayedConsentRequest = Readonly<{
 }>;
 
 /**
- * The event that caused a Confirm. Only `isTrusted` is read; a DOM `Event`,
- * a React synthetic event and a test double all fit.
+ * The event that caused a Confirm: a DOM `Event`, or a framework wrapper
+ * around one (a React synthetic event). Only `isTrusted` is read — from
+ * `nativeEvent` when there is one, because the native event is the browser's
+ * own word for it.
  */
-export type ConsentConfirmEvent = { readonly isTrusted?: unknown } | null | undefined;
+export type ConsentConfirmEvent =
+  | { readonly isTrusted?: unknown; readonly nativeEvent?: { readonly isTrusted?: unknown } | null }
+  | null
+  | undefined;
 
 export type ConsentQueueOptions = {
   /**
@@ -92,7 +104,7 @@ export type ConsentQueue = {
    * The `ConsentSurface` to hand to `defineConsequentialTool({ consent })`.
    * A standalone function — it does not depend on `this`.
    */
-  readonly request: ConsentSurface;
+  readonly surface: ConsentSurface;
   /**
    * Called whenever the displayed request changes. Returns an unsubscribe
    * function. The signature `useSyncExternalStore` expects.
@@ -137,6 +149,7 @@ export type ConsentQueue = {
 
 type Entry = {
   id: string;
+  settled: boolean;
   title: string;
   detail: string;
   confirmLabel: string;
@@ -156,7 +169,10 @@ function randomId(): string {
 /** Never throws. Anything but a readable, literal `true` is untrusted. */
 function isTrustedEvent(event: ConsentConfirmEvent): boolean {
   try {
-    return event !== null && typeof event === "object" && event.isTrusted === true;
+    if (event === null || typeof event !== "object") return false;
+    const native = event.nativeEvent;
+    const source = native !== undefined && native !== null ? native : event;
+    return typeof source === "object" && source.isTrusted === true;
   } catch {
     return false;
   }
@@ -179,8 +195,8 @@ function signalAborted(signal: AbortSignal | undefined): boolean {
  * Throws a `RangeError` for an invalid `capacity` — a configuration mistake
  * that should fail where it is written, not on the first tool call.
  */
-export function createConsentQueue(options: ConsentQueueOptions = {}): ConsentQueue {
-  const capacity = options.capacity ?? CONSENT_QUEUE_DEFAULT_CAPACITY;
+export function createConsentQueue(options?: ConsentQueueOptions): ConsentQueue {
+  const capacity = options?.capacity ?? CONSENT_QUEUE_DEFAULT_CAPACITY;
   if (!Number.isInteger(capacity) || capacity < 1) {
     throw new RangeError("createConsentQueue: capacity must be a positive integer");
   }
@@ -204,6 +220,7 @@ export function createConsentQueue(options: ConsentQueueOptions = {}): ConsentQu
   const advance = () => {
     while (displayed === null && waiting.length > 0) {
       const entry = waiting[0]!;
+      if (entry.settled) { waiting.shift(); continue; } // never display an answered request
       const remaining = entry.deadline - Date.now();
       if (remaining <= 0) {
         entry.settle({ decision: "timeout" });
@@ -224,7 +241,19 @@ export function createConsentQueue(options: ConsentQueueOptions = {}): ConsentQu
     }
   };
 
-  const request: ConsentSurface = (consentRequest, surfaceOptions) => {
+  /**
+   * Expire waiting requests whose deadline has passed but whose timer has not
+   * run yet (a busy event loop). Otherwise they would count against capacity
+   * and turn a request that fits into a spurious `busy`.
+   */
+  const purgeExpired = () => {
+    const now = Date.now();
+    for (const entry of [...waiting]) {
+      if (entry.deadline <= now) entry.settle({ decision: "timeout" });
+    }
+  };
+
+  const surface: ConsentSurface = (consentRequest, surfaceOptions) => {
     try {
       // Read every input exactly once. A getter can answer differently on
       // each read, and the value checked must be the value used.
@@ -241,21 +270,22 @@ export function createConsentQueue(options: ConsentQueueOptions = {}): ConsentQu
       ) {
         return Promise.resolve({ decision: "closed" });
       }
+      purgeExpired();
       if ((displayed ? 1 : 0) + waiting.length >= capacity) {
         return Promise.resolve({ decision: "busy" });
       }
 
       return new Promise<ConsentResult>((resolve) => {
-        let settled = false;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const onAbort = () => { entry.settle({ decision: "closed" }); };
         const entry: Entry = {
           id: randomId(),
+          settled: false,
           ...words,
           deadline: Date.now() + timeoutMs,
           settle: (result) => {
-            if (settled) return false;
-            settled = true;
+            if (entry.settled) return false;
+            entry.settled = true;
             clearTimeout(timer);
             try { signal?.removeEventListener("abort", onAbort); } catch { /* ignore */ }
             let changed = false;
@@ -277,8 +307,12 @@ export function createConsentQueue(options: ConsentQueueOptions = {}): ConsentQu
         timer = setTimeout(() => entry.settle({ decision: "timeout" }), timeoutMs);
         try { signal?.addEventListener("abort", onAbort, { once: true }); }
         catch { entry.settle({ decision: "closed" }); return; }
-        // The signal can fire between the first check and the listener.
-        if (signalAborted(signal)) { entry.settle({ decision: "closed" }); return; }
+        // The signal can fire between the first check and the listener — or,
+        // for a hand-rolled signal, synchronously inside addEventListener.
+        // Either way the entry is already answered and must never be queued:
+        // a settled entry on screen could not be removed by any answer.
+        if (signalAborted(signal)) entry.settle({ decision: "closed" });
+        if (entry.settled) return;
 
         waiting.push(entry);
         if (displayed === null) {
@@ -299,7 +333,7 @@ export function createConsentQueue(options: ConsentQueueOptions = {}): ConsentQu
   };
 
   return {
-    request,
+    surface,
     subscribe(listener) {
       if (typeof listener !== "function") return () => undefined;
       listeners.add(listener);

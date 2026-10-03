@@ -14,13 +14,15 @@
  *
  * ```tsx
  * const queue = createConsentQueue();          // module scope, shared
- * const tool = defineConsequentialTool({ consent: queue.request, ... });
+ * const tool = defineConsequentialTool({ consent: queue.surface, ... });
  *
  * function ConsentPrompt() {
  *   const { request, confirm, decline } = useConsentQueue(queue);
  *   if (!request) return null;
+ *   // key: a new request gets new DOM nodes, so focus never carries over
+ *   // from the last prompt's Confirm to this one's.
  *   return (
- *     <div role="dialog" aria-modal="true">
+ *     <div key={request.id} role="dialog" aria-modal="true">
  *       <h2>{request.title}</h2>
  *       <p>{request.detail}</p>
  *       <button autoFocus onClick={decline}>Not now</button>
@@ -32,17 +34,7 @@
  */
 
 import { useMemo, useSyncExternalStore } from "react";
-import type { ConsentQueue, DisplayedConsentRequest } from "./queue.js";
-
-/**
- * The click (or key) event that caused a Confirm. A React synthetic event
- * fits, and so does a native DOM event. Only `isTrusted` is read, from
- * `nativeEvent` when there is one.
- */
-export type ConsentConfirmTrigger =
-  | { readonly nativeEvent?: { readonly isTrusted?: unknown }; readonly isTrusted?: unknown }
-  | null
-  | undefined;
+import type { ConsentConfirmEvent, ConsentQueue, DisplayedConsentRequest } from "./queue.js";
 
 export type ConsentQueuePrompt = {
   /** The request on screen, or null when there is nothing to render. */
@@ -54,7 +46,7 @@ export type ConsentQueuePrompt = {
    * `false` if the request has since timed out, been cancelled or been
    * replaced, so a stale button can never confirm the next request.
    */
-  confirm: (event: ConsentConfirmTrigger) => boolean;
+  confirm: (event: ConsentConfirmEvent) => boolean;
   /** Decline the request this render displayed. Returns whether accepted. */
   decline: () => boolean;
   /** Dismiss (Escape, backdrop) the request this render displayed. Never consent. */
@@ -71,8 +63,9 @@ function getServerSnapshot(): null {
 }
 
 /**
- * Bind answers to one displayed request. Exported for tests and for bindings
- * that do not use the hook; the hook is just this plus a subscription.
+ * Bind answers to one displayed request: the hook without the subscription,
+ * for a binding that subscribes some other way (a class component, an
+ * external store library).
  */
 export function bindConsentAnswers(
   queue: ConsentQueue,
@@ -84,17 +77,9 @@ export function bindConsentAnswers(
     return { confirm: no, decline: no, dismiss: no };
   }
   return {
-    confirm: (trigger) => {
-      let event: { readonly isTrusted?: unknown } | null | undefined;
-      try {
-        // A React synthetic event copies isTrusted, but the native event is
-        // the browser's own word for it, so prefer that when it exists.
-        event = trigger?.nativeEvent ?? trigger;
-      } catch {
-        return false;
-      }
-      return queue.confirm(id, event);
-    },
+    // The queue reads nativeEvent.isTrusted itself, so a React event passes
+    // straight through.
+    confirm: (event) => queue.confirm(id, event),
     decline: () => queue.decline(id),
     dismiss: () => queue.dismiss(id),
   };

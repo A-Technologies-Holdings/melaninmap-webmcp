@@ -29,16 +29,23 @@ versioned path.
   answering `busy` when full (default capacity 3), deadlines counted from
   enqueue, abort support, and every confirm/decline/dismiss bound to the
   displayed request id (a stale answer is ignored and returns `false`).
-  Confirm requires a trusted event. Exposes `subscribe`/`getSnapshot` for UI
-  bindings. Generalizes `reference/consentBridge.ts`.
+  Confirm requires a trusted event (read from `nativeEvent` when present).
+  Pass `queue.surface` as a tool's `consent`; `subscribe`/`getSnapshot` serve
+  UI bindings. Generalizes `reference/consentBridge.ts`.
 - **`@melaninmap/webmcp-consent/react`**: `useConsentQueue(queue)`, a
   `useSyncExternalStore` hook returning the displayed request plus
-  `confirm(event)` / `decline()` / `dismiss()` bound to it. React (>= 18) is an
+  `confirm(event)` / `decline()` / `dismiss()` bound to it, and
+  `bindConsentAnswers` for bindings that subscribe another way. React (>= 18) is an
   optional peer dependency; the package root still has no dependencies and
   never imports React.
-- `examples/domConsentSurface` is rebuilt on `createConsentQueue` (behavior
-  unchanged, less code), and resolves `busy` instead of `closed` when its
-  three-prompt queue is full. The playground fires four requests to show it.
+- `examples/domConsentSurface` is rebuilt on `createConsentQueue` (less
+  code; focus, ids, dismissal and trusted-click behavior unchanged). It
+  resolves `busy` instead of `closed` when its three-prompt queue is full, and
+  a dialog that cannot be built or opened now resolves `closed` at once
+  instead of blocking the queue. The playground fires four requests to show
+  `busy`.
+- `tsconfig.json` sets `"types": []`, so the library is typechecked without
+  Node or test-tooling globals leaking in.
 
 ## [1.0.0] - 2026-10-03
 

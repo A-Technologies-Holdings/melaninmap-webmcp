@@ -37,17 +37,19 @@ function Prompt({ queue, onRender }) {
   const prompt = useConsentQueue(queue);
   onRender?.(prompt);
   if (!prompt.request) return null;
-  return h("div", { role: "dialog" },
+  // Keyed by request id, as the README shows, so each request gets new nodes.
+  return h("div", { key: prompt.request.id, role: "dialog" },
     h("h2", null, prompt.request.title),
     h("button", { className: "decline", onClick: prompt.decline }, "Not now"),
     h("button", { className: "confirm", onClick: prompt.confirm }, prompt.request.confirmLabel));
 }
 
-async function mount(queue, onRender) {
+async function mount(queue, onRender, { strict = false } = {}) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  await React.act(() => root.render(h(Prompt, { queue, onRender })));
+  const element = h(Prompt, { queue, onRender });
+  await React.act(() => root.render(strict ? h(React.StrictMode, null, element) : element));
   return {
     container,
     button: (name) => container.querySelector(`button.${name}`),
@@ -68,7 +70,7 @@ test("the hook renders the displayed request and follows the queue", async () =>
   const view = await mount(queue);
   assert.equal(view.title(), null);
   let first, second;
-  await React.act(() => { first = queue.request(ask("First")); second = queue.request(ask("Second")); });
+  await React.act(() => { first = queue.surface(ask("First")); second = queue.surface(ask("Second")); });
   assert.equal(view.title(), "First");
   await React.act(() => view.button("decline").click());
   assert.deepEqual(await first, { decision: "declined" });
@@ -79,11 +81,46 @@ test("the hook renders the displayed request and follows the queue", async () =>
   await view.unmount();
 });
 
+// StrictMode double-invokes renders and effects, and subscribes twice. The
+// queue must still notify exactly the live subscription and answer once.
+test("the hook works under StrictMode", async () => {
+  const queue = createConsentQueue();
+  const view = await mount(queue, undefined, { strict: true });
+  let first, second;
+  await React.act(() => { first = queue.surface(ask("First")); second = queue.surface(ask("Second")); });
+  assert.equal(view.title(), "First");
+  await React.act(() => trustedClick(view.button("confirm")));
+  assert.equal((await first).decision, "confirmed");
+  assert.equal(view.title(), "Second");
+  await React.act(() => view.button("decline").click());
+  assert.deepEqual(await second, { decision: "declined" });
+  assert.equal(view.title(), null);
+  await view.unmount();
+});
+
+// Focus must not carry from one request's Confirm to the next one's: with the
+// prompt keyed by request id, the next request's buttons are new nodes.
+test("each request renders fresh nodes, so focus cannot carry over", async () => {
+  const queue = createConsentQueue();
+  const view = await mount(queue);
+  let first, second;
+  await React.act(() => { first = queue.surface(ask("First")); second = queue.surface(ask("Second")); });
+  const firstConfirm = view.button("confirm");
+  firstConfirm.focus();
+  await React.act(() => trustedClick(firstConfirm));
+  await first;
+  assert.notEqual(view.button("confirm"), firstConfirm);
+  assert.notEqual(document.activeElement, view.button("confirm"));
+  await React.act(() => view.button("decline").click());
+  await second;
+  await view.unmount();
+});
+
 test("a script-dispatched Confirm click does not confirm", async () => {
   const queue = createConsentQueue();
   const view = await mount(queue);
   let pending;
-  await React.act(() => { pending = queue.request(ask("Pay", 40)); });
+  await React.act(() => { pending = queue.surface(ask("Pay", 40)); });
   await React.act(() => view.button("confirm").click()); // isTrusted is false
   assert.equal(view.title(), "Pay", "the prompt stays open");
   // The deadline fires a state update, so wait for it inside act().
@@ -97,7 +134,7 @@ test("answers from an earlier render cannot reach the request that replaced it",
   const renders = [];
   const view = await mount(queue, (prompt) => renders.push(prompt));
   let first, second;
-  await React.act(() => { first = queue.request(ask("First")); second = queue.request(ask("Second")); });
+  await React.act(() => { first = queue.surface(ask("First")); second = queue.surface(ask("Second")); });
   const stale = renders.at(-1);
   assert.equal(stale.request.title, "First");
   await React.act(() => { stale.decline(); });
@@ -119,7 +156,7 @@ test("answers from an earlier render cannot reach the request that replaced it",
 
 test("the server render is always empty, even with a request pending", async () => {
   const queue = createConsentQueue();
-  const pending = queue.request(ask("Not on the server"));
+  const pending = queue.surface(ask("Not on the server"));
   assert.equal(renderToString(h(Prompt, { queue })), "");
   queue.decline(queue.getSnapshot().id);
   await pending;
@@ -132,7 +169,7 @@ test("bindConsentAnswers reads isTrusted from nativeEvent first, and fails close
   assert.equal(none.decline(), false);
   assert.equal(none.dismiss(), false);
 
-  const pending = queue.request(ask("Pay"));
+  const pending = queue.surface(ask("Pay"));
   const answers = bindConsentAnswers(queue, queue.getSnapshot());
   // A synthetic event claiming trust over an untrusted native event is untrusted.
   assert.equal(answers.confirm({ isTrusted: true, nativeEvent: { isTrusted: false } }), false);

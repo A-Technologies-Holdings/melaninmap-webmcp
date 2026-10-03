@@ -158,13 +158,22 @@ function sync(): void {
     finally { dialog.remove(); }
   }
   if (request === null) return;
-  const { dialog, decline } = render(request);
-  mounted = { id: request.id, dialog };
-  document.body.appendChild(dialog);
-  // A dialog that cannot open cannot be answered. Dismissing it re-enters
-  // sync() and moves on to the next request, so nothing may run after this.
-  try { dialog.showModal(); }
-  catch { queue.dismiss(request.id); return; }
+  let decline: HTMLButtonElement;
+  try {
+    const built = render(request);
+    decline = built.decline;
+    mounted = { id: request.id, dialog: built.dialog };
+    document.body.appendChild(built.dialog);
+    built.dialog.showModal();
+  } catch {
+    // A dialog that cannot be built or opened (no <body> yet, a host that
+    // refuses showModal) cannot be answered, and leaving it "displayed" would
+    // hold every later request hostage until it timed out. Dismissing it
+    // re-enters sync(), which removes it and moves on, so nothing may run
+    // after this.
+    queue.dismiss(request.id);
+    return;
+  }
   // Deliberately the safe control. See the note above; the deployed card in
   // reference/HandoffConsentCard.tsx does the same thing for the same reason.
   decline.focus();
@@ -173,4 +182,4 @@ function sync(): void {
 queue.subscribe(sync);
 
 /** Serializes prompts so concurrent tool calls queue instead of stacking. */
-export const domConsentSurface: ConsentSurface = queue.request;
+export const domConsentSurface: ConsentSurface = queue.surface;

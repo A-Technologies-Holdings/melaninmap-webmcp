@@ -418,8 +418,11 @@ export function defineConsequentialTool<Args>(
   spec: ConsequentialToolSpec<Args>,
 ): ModelContextTool {
   const mapError = spec.mapError ?? defaultErrorMapper;
-  // Read once, so the name in a decision record is the name the host registered.
+  // Read once, at definition: the name in a decision record is then the name
+  // the host registered, and an observer behind a throwing getter fails here,
+  // where it is written, instead of rejecting a tool call into the runtime.
   const name = spec.name;
+  const onDecision = spec.onDecision;
   return {
     name,
     description: spec.description,
@@ -433,7 +436,7 @@ export function defineConsequentialTool<Args>(
 
       const startedAt = now();
       const report = (outcome: ConsentDecisionRecord["decision"]) =>
-        reportDecision(spec.onDecision, name, outcome, startedAt);
+        reportDecision(onDecision, name, outcome, startedAt);
 
       let decision: ConsentResult;
       try {

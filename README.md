@@ -61,8 +61,8 @@ The package is **ESM-only**. There is no CommonJS build: a CommonJS consumer
 loads it with a dynamic `import()`. The runtime targets browsers; Node 22 or
 newer is needed only for the build and the check suite.
 
-Or skip the dependency entirely: it is about 790 lines of code (1,360 with the
-comments that explain why), plus about 40 for the optional React hook, with
+Or skip the dependency entirely: it is about 800 lines of code (1,400 with the
+comments that explain why), plus about 30 for the optional React hook, with
 nothing to configure, so copying `src/` into your project is a perfectly good
 answer.
 
@@ -172,7 +172,9 @@ the call while the prompt was open. The record deliberately carries no
 arguments and no tokens: a decision log tends to travel further than the
 action does, and arguments are where personal data lives. It is an observer,
 not a participant — never awaited, its return value ignored, and a throw or a
-rejection is swallowed — so it can neither delay nor change the result.
+rejection is swallowed — so it cannot change the result, and an async logger
+cannot delay it. (A synchronous one still runs before the action; keep it
+cheap.)
 
 ### Your own prompt UI: the consent queue
 
@@ -200,7 +202,7 @@ import { createConsentQueue, defineConsequentialTool } from "@melaninmap/webmcp-
 
 export const consentQueue = createConsentQueue(); // one per page, shared
 
-const handoff = defineConsequentialTool({ /* ... */ consent: consentQueue.request });
+const handoff = defineConsequentialTool({ /* ... */ consent: consentQueue.surface });
 
 consentQueue.subscribe(() => {
   const request = consentQueue.getSnapshot(); // the displayed request, or null
@@ -227,13 +229,15 @@ import { createConsentQueue } from "@melaninmap/webmcp-consent";
 import { useConsentQueue } from "@melaninmap/webmcp-consent/react";
 
 export const consentQueue = createConsentQueue();
-// defineConsequentialTool({ ..., consent: consentQueue.request })
+// defineConsequentialTool({ ..., consent: consentQueue.surface })
 
 export function ConsentPrompt() {
   const { request, confirm, decline, dismiss } = useConsentQueue(consentQueue);
   if (!request) return null;
+  // key: each request gets new DOM nodes, so focus left on the last
+  // prompt's Confirm can never carry over to this one's.
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby={`c-${request.id}`}
+    <div key={request.id} role="dialog" aria-modal="true" aria-labelledby={`c-${request.id}`}
          onKeyDown={(e) => e.key === "Escape" && dismiss()}>
       <h2 id={`c-${request.id}`}>{request.title}</h2>
       <p>{request.detail}</p>
@@ -247,7 +251,9 @@ export function ConsentPrompt() {
 
 `confirm`, `decline` and `dismiss` are bound to the request *that render*
 displayed, so a button clicked after its request was replaced returns `false`
-and changes nothing. `confirm` must receive the click event; it reads
+and changes nothing. Key the prompt by `request.id` as above: without it React
+reuses the same button for the next request, and a double-click or a held
+Enter meant for one request can confirm the next. `confirm` must receive the click event; it reads
 `nativeEvent.isTrusted`. Prompts never render on the server: the server
 snapshot is always `null`. The hook renders nothing itself — markup, focus
 handling and styling stay yours; the behavior rules in

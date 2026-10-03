@@ -410,3 +410,25 @@ test("a dialog that cannot open resolves closed and the next request still shows
   declineButton(dialogs[1]).click();
   assert.deepEqual(await second, { decision: "declined" });
 });
+
+// No <body> yet (a surface called before the document finished parsing) must
+// not leave a request "displayed" with nothing on screen until it times out.
+test("a dialog that cannot even be mounted resolves closed at once", async () => {
+  reset();
+  const body = document.body;
+  document.body = null;
+  let first;
+  try {
+    first = domConsentSurface({ ...request, timeoutMs: 5000 });
+  } finally {
+    document.body = body;
+  }
+  const started = Date.now();
+  assert.deepEqual(await first, { decision: "closed" });
+  assert.ok(Date.now() - started < 1000, "it must not wait for the deadline");
+  const second = domConsentSurface(request);
+  await tick();
+  assert.equal(dialogs.at(-1).open, true);
+  declineButton(dialogs.at(-1)).click();
+  assert.deepEqual(await second, { decision: "declined" });
+});
