@@ -1,0 +1,166 @@
+<pre class="metadata">
+Title: WebMCP (test fixture excerpt)
+Shortname: webmcp
+Status: CG-DRAFT
+</pre>
+
+<!--
+  Test fixture for scripts/check-spec-drift.mjs. Excerpted verbatim from
+  https://github.com/webmachinelearning/webmcp/blob/d61d0e6d297ddb6bff3510b1330dbb215c6ef43c/index.bs
+  (every IDL block plus the permissions-policy definition, with a little
+  surrounding prose). Copyright W3C Web Machine Learning Community Group
+  contributors, under the W3C Software and Document License:
+  https://www.w3.org/copyright/software-license-2023/
+-->
+
+<hr>
+
+Prose that the extractor must ignore.
+
+<xmp class="idl">
+partial interface Document {
+  [SecureContext, SameObject] readonly attribute ModelContext modelContext;
+};
+</xmp>
+
+<h3 id="model-context-container">ModelContext Interface</h3>
+
+Prose that the extractor must ignore.
+
+<xmp class="idl">
+[Exposed=Window, SecureContext]
+interface ModelContext : EventTarget {
+  Promise<undefined> registerTool(ModelContextTool tool, optional ModelContextRegisterToolOptions options = {});
+  Promise<sequence<RegisteredTool>> getTools(optional ModelContextGetToolOptions options = {});
+  Promise<DOMString> executeTool(RegisteredTool tool, optional object inputObject, optional ModelContextExecuteToolOptions options = {});
+
+  attribute EventHandler ontoolchange;
+  attribute EventHandler ontoolactivated;
+  attribute EventHandler ontoolcancel;
+};
+</xmp>
+
+<h4 id="model-context-tool">ModelContextTool Dictionary</h4>
+
+Prose that the extractor must ignore.
+
+<xmp class="idl">
+dictionary ModelContextTool {
+  required DOMString name;
+  // Because `title` is for display in possibly native UIs, this must be a `USVString`.
+  // See https://w3ctag.github.io/design-principles/#idl-string-types.
+  USVString title;
+  required DOMString description;
+  object inputSchema;
+  required ToolExecuteCallback execute;
+  ToolAnnotations annotations;
+};
+
+dictionary ToolAnnotations {
+  boolean readOnlyHint = false;
+  boolean untrustedContentHint = false;
+  boolean consequentialHint = false;
+  boolean debugging = false;
+};
+
+dictionary ToolExecuteCallbackOptions {
+  required AbortSignal signal;
+};
+
+callback ToolExecuteCallback = Promise<any> (object inputObject, ToolExecuteCallbackOptions options);
+</xmp>
+
+<h4 id="model-context-register-tool-options">ModelContextRegisterToolOptions Dictionary</h4>
+
+Prose that the extractor must ignore.
+
+<xmp class="idl">
+dictionary ModelContextRegisterToolOptions {
+  sequence<USVString> exposedTo;
+  AbortSignal signal;
+};
+</xmp>
+
+<h4 id="model-context-get-tool-options">ModelContextGetToolOptions Dictionary</h4>
+
+Prose that the extractor must ignore.
+
+<xmp class="idl">
+dictionary ModelContextGetToolOptions {
+  sequence<USVString> fromOrigins;
+};
+</xmp>
+
+<h4 id="model-context-execute-tool-options">ModelContextExecuteToolOptions Dictionary</h4>
+
+Prose that the extractor must ignore.
+
+<xmp class="idl">
+dictionary ModelContextExecuteToolOptions {
+  AbortSignal signal;
+};
+</xmp>
+
+<h4 id="registered-tool">RegisteredTool Dictionary</h4>
+
+Prose that the extractor must ignore.
+
+<xmp class="idl">
+dictionary RegisteredTool {
+  required DOMString name;
+  // `title` can be exposed as a `DOMString` since it was taken in by a
+  // `USVString`, meaning all unmatched surrogate processing has already been
+  // done, and there's no need to do it again on tool exposure.
+  DOMString title;
+  required DOMString description;
+  object inputSchema;
+  required Window window;
+  required USVString origin;
+  ToolAnnotations annotations;
+};
+</xmp>
+
+<h4 id="tool-activated-event">ToolActivatedEvent Interface</h4>
+
+Prose that the extractor must ignore.
+
+<xmp class="idl">
+[Exposed=Window, SecureContext]
+interface ToolActivatedEvent : Event {
+  constructor(DOMString type, optional ToolActivatedEventInit eventInitDict = {});
+  readonly attribute DOMString toolName;
+};
+
+dictionary ToolActivatedEventInit : EventInit {
+  DOMString toolName = "";
+};
+</xmp>
+
+<h4 id="tool-cancel-event">ToolCancelEvent Interface</h4>
+
+Prose that the extractor must ignore.
+
+<xmp class="idl">
+[Exposed=Window, SecureContext]
+interface ToolCancelEvent : Event {
+  constructor(DOMString type, optional ToolCancelEventInit eventInitDict = {});
+  readonly attribute DOMString toolName;
+};
+
+dictionary ToolCancelEventInit : EventInit {
+  DOMString toolName = "";
+};
+</xmp>
+
+<h3 id="permissions-policy">Permissions policy integration</h3>
+
+Access to the APIs in this specification is gated behind the [=policy-controlled feature=] "<dfn
+permission>tools</dfn>", which has a [=policy-controlled feature/default allowlist=] of
+<code>[=default allowlist/'self'=]</code>.
+
+
+<div class=example id=executing-a-discovered-tool>
+  ```js
+  const tools = await document.modelContext.getTools();
+  ```
+</div>
