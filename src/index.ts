@@ -19,6 +19,7 @@ export {
 export {
   detectModelContext,
   registerAgentTools,
+  registerAgentToolsAsync,
   type RegisterAgentToolsOptions,
   type RegisterResult,
 } from "./register.js";
@@ -30,4 +31,5 @@ export type {
   ModelContextTextContent,
   ModelContextTool,
   ModelContextToolResult,
+  ToolExecutionOptions,
 } from "./types.js";

@@ -20,7 +20,7 @@ import {
   type ConsentResult,
   type ConsentSurface,
 } from "./consent.js";
-import type { ModelContextTool, ModelContextToolResult } from "./types.js";
+import type { ModelContextTool, ModelContextToolResult, ToolExecutionOptions } from "./types.js";
 
 /**
  * Everything a tool returns is JSON in a single text block.
@@ -53,6 +53,95 @@ export function toToolResult(value: unknown): ModelContextToolResult {
   return {
     content: [{ type: "text", text: typeof text === "string" ? text : "null" }],
   };
+}
+
+const CANCELLED = {
+  ok: false, code: "tool_cancelled",
+  message: "The tool call was cancelled. Do not retry automatically.",
+};
+
+/**
+ * This realm's own `AbortSignal.prototype.aborted` getter. Calling it on a
+ * value is a brand check that works across realms: a genuine signal from an
+ * iframe passes, while a Proxy, an `Object.create` object or a signal-shaped
+ * fake throws. It also ignores an own `aborted` property shadowing the real one.
+ */
+const abortedGetter: ((this: unknown) => boolean) | undefined = (() => {
+  try {
+    return typeof AbortSignal === "undefined"
+      ? undefined
+      : (Object.getOwnPropertyDescriptor(AbortSignal.prototype, "aborted")?.get as
+          | ((this: unknown) => boolean)
+          | undefined);
+  } catch {
+    return undefined;
+  }
+})();
+
+/** Never throws. A signal that cannot be read counts as aborted: fail closed. */
+function isAborted(signal: AbortSignal | undefined): boolean {
+  if (signal === undefined) return false;
+  try {
+    return abortedGetter ? abortedGetter.call(signal) === true : signal.aborted === true;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Read the host's execution options once, keeping only a genuine AbortSignal.
+ *
+ * The host is untyped in practice. `null`, `{}` or a signal-shaped object must
+ * not throw on the way in, and must not reach handlers as if it could cancel
+ * a `fetch`.
+ */
+function executionOptions(options: unknown): ToolExecutionOptions {
+  try {
+    const signal = (options as { signal?: unknown } | null | undefined)?.signal;
+    if (abortedGetter === undefined || signal === null || typeof signal !== "object") return {};
+    abortedGetter.call(signal); // throws for anything that is not a real signal
+    return { signal: signal as AbortSignal };
+  } catch {
+    return {};
+  }
+}
+
+/** Enforce the deadline even when consumer code ignores its own timeout. */
+async function awaitConsent(
+  surface: ConsentSurface,
+  request: ConsentRequest,
+  signal?: AbortSignal,
+): Promise<ConsentResult> {
+  const timeoutMs = request.timeoutMs ?? CONSENT_DEFAULT_TIMEOUT_MS;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
+    return { decision: "closed" };
+  }
+  const controller = new AbortController();
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: ConsentResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      // A host signal can carry its own throwing methods. This runs from a
+      // timer, outside every try/catch, so it must not throw.
+      try { signal?.removeEventListener("abort", cancel); } catch { /* ignore */ }
+      resolve(result);
+      controller.abort();
+    };
+    const cancel = () => finish({ decision: "closed" });
+    const timer = setTimeout(() => finish({ decision: "timeout" }), timeoutMs);
+    try { signal?.addEventListener("abort", cancel, { once: true }); }
+    catch { finish({ decision: "closed" }); return; }
+    if (isAborted(signal)) { cancel(); return; }
+    try {
+      Promise.resolve(surface({ ...request, timeoutMs }, { signal: controller.signal }))
+        .then(value => {
+          try { finish(normalizeConsentResult(value)); }
+          catch { finish({ decision: "closed" }); }
+        }, () => finish({ decision: "closed" }));
+    } catch { finish({ decision: "closed" }); }
+  });
 }
 
 export type ToolFailure = { ok: false; code: string; message?: string };
@@ -99,7 +188,7 @@ export type ToolSpec<Args> = {
   annotations?: ModelContextTool["annotations"];
   /** Validate and narrow raw model-supplied arguments, or return null. */
   parseArgs: (raw: Record<string, unknown>) => Args | null;
-  execute: (args: Args) => Promise<unknown>;
+  execute: (args: Args, options: ToolExecutionOptions) => Promise<unknown>;
   mapError?: ErrorMapper;
 };
 
@@ -152,12 +241,17 @@ export function defineReadTool<Args>(spec: ToolSpec<Args>): ModelContextTool {
     // tool kind win over spec.annotations so a read tool can never be marked
     // non-read-only (and, below, a consequential tool can never claim to be).
     annotations: { ...spec.annotations, readOnlyHint: true },
-    execute: async (raw) => {
+    execute: async (raw, hostOptions) => {
+      const options = executionOptions(hostOptions);
+      if (isAborted(options.signal)) return toToolResult(CANCELLED);
       const args = safeParseArgs(spec.parseArgs, raw);
       if (args === null) return toToolResult(INVALID_ARGUMENTS);
       try {
-        return toToolResult(await spec.execute(args));
+        return toToolResult(await spec.execute(args, options));
       } catch (error) {
+        // A handler that forwards the signal to fetch rejects with an abort
+        // error. That is a cancellation, not an unavailable tool.
+        if (isAborted(options.signal)) return toToolResult(CANCELLED);
         return toToolResult(safeMapError(mapError, error));
       }
     },
@@ -187,8 +281,44 @@ export type ConsequentialToolSpec<Args> = Omit<ToolSpec<Args>, "execute"> & {
    * consumers would resort to out-of-band shared state, which is both racy and
    * exactly the kind of ambient authority this package argues against.
    */
-  execute: (args: Args, consent: ConsentConfirmation) => Promise<unknown>;
+  execute: (args: Args, consent: ConsentConfirmation, options: ToolExecutionOptions) => Promise<unknown>;
 };
+
+const REFUSAL_DECISIONS: ReadonlySet<unknown> = new Set([
+  "declined",
+  "timeout",
+  "closed",
+]);
+
+/**
+ * Narrow whatever the surface resolved to.
+ *
+ * The type says `ConsentResult`, but a surface is consumer code and often
+ * plain JavaScript. Resolving `undefined` would make `decision.decision` throw
+ * into the agent runtime, and an unknown string would leak into the refusal
+ * code as `consent_yes`. Only an object whose `decision` is exactly
+ * `"confirmed"` confirms; a known refusal keeps its meaning; anything else
+ * becomes `closed`. Fail closed, and stay well formed while doing it.
+ */
+function normalizeConsentResult(value: unknown): ConsentResult {
+  if (value === null || typeof value !== "object") {
+    return { decision: "closed" };
+  }
+  // Read each property exactly once. A getter or Proxy can answer differently
+  // on every read, and the value checked must be the value returned.
+  const { decision, auditToken } = value as {
+    decision?: unknown;
+    auditToken?: unknown;
+  };
+  if (decision === "confirmed") {
+    return typeof auditToken === "string"
+      ? { decision: "confirmed", auditToken }
+      : { decision: "confirmed" };
+  }
+  return REFUSAL_DECISIONS.has(decision)
+    ? { decision: decision as "declined" | "timeout" | "closed" }
+    : { decision: "closed" };
+}
 
 /**
  * A tool with a consequence. The action runs only after a human confirms in
@@ -203,31 +333,33 @@ export function defineConsequentialTool<Args>(
     name: spec.name,
     description: spec.description,
     inputSchema: spec.inputSchema,
-    annotations: { ...spec.annotations, readOnlyHint: false },
-    execute: async (raw) => {
+    annotations: { ...spec.annotations, readOnlyHint: false, consequentialHint: true },
+    execute: async (raw, hostOptions) => {
+      const options = executionOptions(hostOptions);
+      if (isAborted(options.signal)) return toToolResult(CANCELLED);
       const args = safeParseArgs(spec.parseArgs, raw);
       if (args === null) return toToolResult(INVALID_ARGUMENTS);
 
       let decision: ConsentResult;
       try {
         const request = spec.describeConsent(args);
-        decision = await spec.consent({
-          timeoutMs: CONSENT_DEFAULT_TIMEOUT_MS,
-          ...request,
-        });
+        decision = await awaitConsent(spec.consent, request, options.signal);
       } catch {
         // A consent surface that fails is a consent surface that did not
         // confirm. Fail closed, always.
         return toToolResult(consentRefusal("closed"));
       }
 
+      if (isAborted(options.signal)) return toToolResult(CANCELLED);
       if (decision.decision !== "confirmed") {
         return toToolResult(consentRefusal(decision.decision));
       }
 
       try {
-        return toToolResult(await spec.execute(args, decision));
+        return toToolResult(await spec.execute(args, decision, options));
       } catch (error) {
+        // Same as the read path: an aborted signal means cancelled.
+        if (isAborted(options.signal)) return toToolResult(CANCELLED);
         return toToolResult(safeMapError(mapError, error));
       }
     },

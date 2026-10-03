@@ -24,22 +24,21 @@ It is extracted from the pre-deployment agent layer prepared for
 handoffs disabled until the exact production path is deployed and verified
 with an approved Clarksville event or tour and its authority-backed Passport.
 
-## Use from source
-
-No npm-registry release is claimed yet. Install directly from the public
-repository, or clone it and run `npm run check` before linking it locally. The
-runtime has no dependencies; devDependencies are only for the build and the
-check suite.
+## Install
 
 ```bash
-npm install github:A-Technologies-Holdings/melaninmap-webmcp
+npm install @melaninmap/webmcp-consent
 ```
+
+The runtime has no dependencies; devDependencies are only for the build and the
+check suite. To work from source instead, clone the repository and run
+`npm run check` before linking it locally.
 
 ```ts
 import {
   defineReadTool,
   defineConsequentialTool,
-  registerAgentTools,
+  registerAgentToolsAsync,
 } from "@melaninmap/webmcp-consent";
 ```
 
@@ -49,14 +48,18 @@ holds — the action does not run on decline, timeout, or dismissal, a consent
 surface that *throws* fails closed rather than open, and registration prefers
 the incremental style so a caller's `AbortSignal` is not silently dropped —
 and a pack lint (`publint` + `attw`) proving the published artifact resolves
-the way consumers will import it. `npm test` runs the suite alone.
+the way consumers will import it. `npm test` builds and runs the suite alone.
 
 `npm run build` emits ESM plus declarations to `dist/`, which is what `main`,
 `types` and `exports` point at — importing the package gets you compiled
 JavaScript, not raw TypeScript that a consumer's runtime or bundler would have
 to strip for itself.
 
-Or skip the dependency entirely: it is about 380 lines of code (700 with the
+The package is **ESM-only**. There is no CommonJS build: a CommonJS consumer
+loads it with a dynamic `import()`. The runtime targets browsers; Node 22 or
+newer is needed only for the build and the check suite.
+
+Or skip the dependency entirely: it is about 510 lines of code (840 with the
 comments that explain why) with nothing to configure, so copying `src/` into
 your project is a perfectly good answer.
 
@@ -83,6 +86,10 @@ const search = defineReadTool({
 
 A consequential tool requires a `ConsentSurface` and a description of what the
 person is agreeing to. Both are mandatory arguments.
+
+The example surface is not a package export: copy `examples/domConsentSurface.ts`
+(and `examples/consent-surface.css`) into your app and change its import to
+`@melaninmap/webmcp-consent`.
 
 ```ts
 import { domConsentSurface } from "./examples/domConsentSurface";
@@ -116,11 +123,18 @@ const handoff = defineConsequentialTool({
   execute: (args) => api.handoff(args),
 });
 
-registerAgentTools([search, handoff]);
+await registerAgentToolsAsync([search, handoff]);
 ```
 
+The example surface ships with a default look in
+[`examples/consent-surface.css`](./examples/consent-surface.css): load it once per
+page. Every element carries an `mm-consent__*` class and every color, radius and
+font is a custom property on `.mm-consent`, so rebranding is an override, not a
+fork. It follows the light/dark preference and honors reduced motion and forced
+colors.
+
 `registerAgentTools` is fully feature-detected. In any browser without either
-proposed registrar API it is a silent no-op that costs one property read. Load
+proposed registrar API it is a silent no-op that costs two `modelContext` lookups. Load
 it lazily after your app mounts: a registrar that can break the host page is
 worse than no registrar.
 
@@ -128,6 +142,13 @@ Registration is idempotent per tool set — re-registering the same tools is a
 no-op, while a different set on the same page registers independently. Pass
 `{ scope }` to name a registration explicitly, and `{ signal }` to release the
 scope when an owning controller aborts.
+
+Both of those assume the incremental `registerTool` style. A host that offers
+only the bulk `provideContext` style *replaces* the page's tool set on every
+call, so scopes there cannot be independent: the first scope to register owns
+the page, and a different scope gets `{ registered: false, reason:
+"bulk_conflict" }` instead of silently erasing the first scope's tools. The bulk
+style takes no `{ signal }`, so its tools live for the page.
 
 ## Writing tool descriptions
 
@@ -216,7 +237,7 @@ happens until you answer it. Decline, and the model is told you declined and
 told not to retry.
 
 In any other browser the registrar is a silent no-op — the site works normally
-and pays one property read for the feature detection.
+and pays two `modelContext` lookups for the feature detection.
 
 ## How it's built
 
@@ -237,3 +258,34 @@ MIT. See [LICENSE](./LICENSE). Contributions use the Developer Certificate of
 Origin described in [CONTRIBUTING.md](./CONTRIBUTING.md). The code license does
 not license the Melanin Map or Big Mama names and brand assets; see
 [TRADEMARKS.md](./TRADEMARKS.md).
+
+## Cancellation and consent lifetime
+
+Pass the browser invocation's execution options to `tool.execute(args, { signal })`.
+Read handlers receive those options as their second argument; consequential handlers
+receive them as their third argument, after the consent confirmation. Forward the
+signal to `fetch` and other cancellable work. Registration signals control tool
+availability; execution signals control individual calls.
+
+The gate enforces the prompt deadline even if a custom consent surface never settles.
+Surfaces receive a separate cancellation signal to close their UI when the deadline
+or caller cancellation wins. A late confirmation cannot execute the action.
+The DOM example allows at most three active or queued prompts, and its timeout starts
+when the request enters the queue. A call cancelled before its handler runs returns
+`tool_cancelled`, as does a handler that rejects after cancellation; a handler that
+completes anyway reports its real result.
+
+Registration bookkeeping is isolated by browser host and tool name. Overlapping
+scopes return `tool_conflict` before touching the host. Browser getter failures are
+optional-feature failures and cannot break the page.
+
+For promise-based browser registration, use `await registerAgentToolsAsync(tools)`.
+It waits for acceptance and reports partial failures without retrying rejected host calls.
+`registerAgentTools` remains the synchronous compatibility API for older prototypes.
+
+To try the local consent playground, run `npm run build && npm run build:test`,
+then `python3 -m http.server 8080` from a clone of this repository (the playground
+is not in the npm package). Open
+`http://localhost:8080/examples/playground.html`. Its counter is local to the page;
+it exercises human confirmation, five-second expiration, cancellation and the
+bounded queue without provider credentials.

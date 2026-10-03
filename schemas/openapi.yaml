@@ -6,8 +6,8 @@ info:
     name: MIT
     url: https://github.com/A-Technologies-Holdings/melaninmap-webmcp/blob/main/LICENSE
   description: |
-    The HTTP surface behind the five WebMCP tools registered by
-    melaninmap.app. Published so an agent author can read the contract without
+    The HTTP surface — seven endpoints — behind the five WebMCP tools
+    registered by melaninmap.app. Published so an agent author can read the contract without
     executing the page.
 
     Every endpoint is POST + JSON, same-origin, and unauthenticated: there are
@@ -16,15 +16,17 @@ info:
     continuity, NOT as a credential — see SECURITY.md before you copy this
     shape, because the server-side controls are the part that matters.
 
-    Two endpoints write. `/agent/action` records an attributed follow-through.
-    `/agent/handoff` creates an attributed journey to a ticketing destination
-    after `/agent/handoff-consent` exchanges the page's visible confirmation
-    signal for a short-lived, operation-bound server proof. Both write lanes
+    Two lanes write attributed records. `/agent/action` records an attributed
+    follow-through. The handoff lane is three calls, in order:
+    `/agent/handoff-consent` exchanges the page's visible confirmation signal
+    for a short-lived, operation-bound server proof; `/agent/handoff` creates
+    the attributed journey with that proof; `/agent/handoff-open` redeems the
+    journey's token for its ticketing destination. Both write lanes
     refuse without a `recommendationId` the server minted for that same
     installation, so `/agent/search` is the entry point for every write path.
 servers:
   # The public agent paths are `/agent/*`, which is what llms.txt advertises and
-  # what this document describes. `vercel.json` rewrites all five to the
+  # what this document describes. `vercel.json` rewrites all seven to the
   # `/api/agent/*` handlers, so `https://melaninmap.app/agent/search` resolves.
   # The page's own client calls `/api/agent/*` directly because it is
   # same-origin and skips the rewrite; both reach the same handler.
@@ -588,7 +590,7 @@ components:
 
         `network_error` — the request never completed; every tool can return it.
         `invalid_arguments` — the model's arguments failed the tool's own parse;
-        returned by get_business_details, check_verification_status,
+        returned by get_business_details, check_ownership_verification,
         record_interest and request_event_handoff.
         `busy` / `user_declined` — consent outcomes, so request_event_handoff
         only. A decline is a normal result, not an error.
@@ -606,7 +608,7 @@ components:
           #
           #   Client-side, no request made:
           #     network_error      — every tool
-          #     invalid_arguments  — get_business_details, check_verification_status,
+          #     invalid_arguments  — get_business_details, check_ownership_verification,
           #                          record_interest, request_event_handoff
           #     busy, user_declined — consent outcomes; request_event_handoff only
           #
@@ -614,6 +616,13 @@ components:
           #   from the backend limiter, plus the fallbacks `rate_limit` (429)
           #   and `agent_gateway_failed` (other non-2xx).
           type: string
+        message:
+          type: string
+          description: |
+            Optional instruction for the model, present on the consent
+            outcomes (`busy`, `user_declined`). Written to be acted on: it says
+            what happened and whether to retry. Optional, so a client that
+            only reads `code` is unaffected.
     RedeemedHandoff:
       type: object
       required: [ok, destinationUrl, attributionIncluded, replayed, sequence]

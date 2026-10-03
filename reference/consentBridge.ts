@@ -12,7 +12,9 @@
  *   { status: "busy" } immediately without disturbing the open card.
  * - A pending request auto-declines after 60 seconds.
  * - A "confirmed" resolution carries the consent token, which only the card
- *   module holds — tool execute code cannot fabricate a confirmation.
+ *   module references. This is hygiene, not an authorization boundary:
+ *   the public token and exported resolver cannot prove human consent.
+ *   Server authorization must independently validate the hand-off.
  */
 
 export type HandoffConsentRequest = {
@@ -115,7 +117,7 @@ export function requestHandoffConsent(
 
   return new Promise<HandoffConsentOutcome>((resolve) => {
     const timeoutId = setTimeout(() => {
-      resolvePendingConsentRequest({ status: "declined" });
+      resolvePendingConsentRequest({ status: "declined" }, request);
     }, HANDOFF_CONSENT_TIMEOUT_MS);
     pending = {
       request,
@@ -133,9 +135,9 @@ export function requestHandoffConsent(
  * module; the bridge attaches the pending request's idempotency key so the
  * whole consent resolves to exactly one server-side create identity.
  */
-export function resolvePendingConsentRequest(answer: HandoffConsentAnswer) {
-  if (!pending) {
-    return;
+export function resolvePendingConsentRequest(answer: HandoffConsentAnswer, request: HandoffConsentRequest): boolean {
+  if (!pending || pending.request !== request) {
+    return false;
   }
   const current = pending;
   pending = null;
@@ -146,4 +148,5 @@ export function resolvePendingConsentRequest(answer: HandoffConsentAnswer) {
       ? { ...answer, idempotencyKey: current.idempotencyKey }
       : answer,
   );
+  return true;
 }

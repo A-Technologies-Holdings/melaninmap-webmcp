@@ -16,6 +16,8 @@ export type ModelContextToolResult = {
   content: ModelContextTextContent[];
 };
 
+export type ToolExecutionOptions = { signal?: AbortSignal };
+
 export type ModelContextTool = {
   name: string;
   description: string;
@@ -23,7 +25,7 @@ export type ModelContextTool = {
   inputSchema: Record<string, unknown>;
   /** MCP-style behavior hints (e.g. readOnlyHint). */
   annotations?: { readOnlyHint?: boolean } & Record<string, unknown>;
-  execute: (args: Record<string, unknown>) => Promise<ModelContextToolResult>;
+  execute: (args: Record<string, unknown>, options?: ToolExecutionOptions) => Promise<ModelContextToolResult>;
 };
 
 export type ModelContextRegisterOptions = {

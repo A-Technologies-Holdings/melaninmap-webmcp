@@ -6,7 +6,8 @@ Thank you for helping improve the WebMCP consent gate.
 
 1. Create a focused branch from `main`.
 2. Run `npm ci --ignore-scripts`.
-3. Run `npm run check`.
+3. Run `npm run check`. While iterating, `npm test` builds and runs just the
+   behavioral suite.
 4. Confirm the change introduces no runtime dependency, secret, private
    application code, Big Mama prompt or voice asset, or user data.
 5. Add a `Signed-off-by` trailer to every commit to certify the
@@ -33,3 +34,14 @@ must never gain a trusted-caller or consent-bypass option.
 
 Do not disclose a vulnerability in a public issue. Follow
 [SECURITY.md](./SECURITY.md).
+
+## Public CI and DCO
+
+CI runs on Buildkite (see [.buildkite/README.md](./.buildkite/README.md)).
+`Buildkite / WebMCP package` runs the full `npm run check` gate, and
+`Buildkite / WebMCP DCO` verifies `Signed-off-by` trailers on every PR commit.
+Both are required checks on `main`, alongside the Semgrep scan. The DCO check
+verifies the trailer; it does not verify the signer's identity.
+
+A second code owner must be a maintainer with repository write access who has
+accepted that responsibility. Do not add a placeholder account.

@@ -1,9 +1,24 @@
+# CI only. Publishing remains a separate reviewed release action.
 steps:
-  - label: ":typescript: WebMCP package gate"
-    key: "ci"
-    command:
-      - "npm ci --ignore-scripts"
-      - "npm run check"
+  - label: ":node: Package checks"
+    key: package
+    command: "bash scripts/buildkite-check.sh package"
+    timeout_in_minutes: 15
     agents:
-      queue: "linux-small"
-    timeout_in_minutes: 10
+      queue: "macos-15-medium"
+    concurrency: 1
+    concurrency_group: "melanin-map/pr-validation-free"
+    notify:
+      - github_check:
+          name: "Buildkite / WebMCP package"
+  - label: ":memo: Contribution sign-off"
+    key: dco
+    command: "bash scripts/buildkite-check.sh dco"
+    timeout_in_minutes: 5
+    agents:
+      queue: "macos-15-medium"
+    concurrency: 1
+    concurrency_group: "melanin-map/pr-validation-free"
+    notify:
+      - github_check:
+          name: "Buildkite / WebMCP DCO"

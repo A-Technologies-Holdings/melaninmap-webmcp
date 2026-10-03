@@ -5,9 +5,10 @@
  * components/ConsentBanner.tsx: surface #17110D, gold #C9963B on bg #0D0907,
  * borders rgba(201,150,59,0.2), rounded-2xl, uppercase tracking buttons.
  *
- * The consent token constant lives ONLY in this module and leaves it only
- * through resolvePendingConsentRequest() when the person clicks Confirm —
- * tool execute code cannot fabricate a confirmation.
+ * The card accepts only trusted browser clicks for the displayed request.
+ * This is module hygiene, not an authorization boundary: the public token
+ * and exported resolver cannot prove human consent. Server authorization
+ * must independently validate the hand-off.
  *
  * Mounted by the registrar into its own React root (sonner-style dedicated
  * container) via ensureHandoffConsentCardMounted(), so the card exists only
@@ -31,11 +32,12 @@ function getServerSnapshot() {
   return null;
 }
 
-function decline() {
-  resolvePendingConsentRequest({ status: "declined" });
+function decline(request: NonNullable<ReturnType<typeof getPendingConsentRequest>>) {
+  resolvePendingConsentRequest({ status: "declined" }, request);
 }
 
-function confirm() {
+function confirm(request: NonNullable<ReturnType<typeof getPendingConsentRequest>>, event: React.MouseEvent<HTMLButtonElement>) {
+  if (!event.nativeEvent.isTrusted || getPendingConsentRequest() !== request) return;
   // Open the destination placeholder inside the click handler, while the
   // transient user activation is still valid — the redemption round trips
   // that follow would otherwise leave a later window.open popup-blocked on
@@ -50,11 +52,12 @@ function confirm() {
   } catch {
     navigationHandle = null;
   }
-  resolvePendingConsentRequest({
+  const accepted = resolvePendingConsentRequest({
     status: "confirmed",
     consentToken: CONSENT_TOKEN,
     navigationHandle,
-  });
+  }, request);
+  if (!accepted) navigationHandle?.close();
 }
 
 export default function HandoffConsentCard() {
@@ -79,7 +82,7 @@ export default function HandoffConsentCard() {
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
       event.preventDefault();
-      decline();
+      decline(request);
       return;
     }
     if (event.key === "Tab") {
@@ -97,7 +100,7 @@ export default function HandoffConsentCard() {
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center px-4"
       style={{ backgroundColor: "rgba(0, 0, 0, 0.6)" }}
-      onClick={decline}
+      onClick={() => decline(request)}
     >
       <div
         role="dialog"
@@ -136,7 +139,7 @@ export default function HandoffConsentCard() {
           <button
             ref={declineRef}
             type="button"
-            onClick={decline}
+            onClick={() => decline(request)}
             className="px-4 py-2 rounded-full text-xs font-semibold uppercase tracking-[0.08em]"
             style={{
               color: "#8B7355",
@@ -148,7 +151,7 @@ export default function HandoffConsentCard() {
           <button
             ref={confirmRef}
             type="button"
-            onClick={confirm}
+            onClick={(event) => confirm(request, event)}
             className="px-4 py-2 rounded-full text-xs font-semibold uppercase tracking-[0.08em]"
             style={{ backgroundColor: "#C9963B", color: "#0D0907" }}
           >

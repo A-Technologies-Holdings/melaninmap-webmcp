@@ -39,7 +39,7 @@ Object.defineProperty(globalThis, "navigator", {
   },
 });
 
-const partial = registerAgentTools([tool, tool]);
+const partial = registerAgentTools([tool, { ...tool, name: "u" }]);
 
 test("a partial registration reports the exact partial state", () => {
   assert.deepEqual(partial, {
@@ -61,7 +61,7 @@ test("the failure happened mid-loop, after one tool landed", () => {
 });
 
 test("a partial registration still blocks an unsafe retry", () => {
-  assert.deepEqual(registerAgentTools([tool]), {
+  assert.deepEqual(registerAgentTools([tool, { ...tool, name: "u" }]), {
     registered: false,
     reason: "already_registered",
   });
