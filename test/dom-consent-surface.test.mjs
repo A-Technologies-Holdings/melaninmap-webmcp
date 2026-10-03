@@ -367,3 +367,46 @@ test("an expired queued prompt frees its slot while an earlier prompt is open", 
   assert.deepEqual(await first, { decision: "declined" });
   await tick();
 });
+
+// #12, in the DOM: a dialog that has been replaced is gone from the page, but
+// its buttons and listeners still exist. Nothing done to them may answer the
+// request that replaced it.
+test("a replaced dialog's controls cannot answer the next request", async () => {
+  reset();
+  const first = domConsentSurface(request);
+  const second = domConsentSurface(request);
+  await tick();
+  const old = dialogs[0];
+  declineButton(old).click();
+  assert.deepEqual(await first, { decision: "declined" });
+  await tick();
+  assert.equal(old.removed, true);
+  assert.equal(dialogs.length, 2);
+  confirmButton(old).click();
+  old.dispatch("cancel");
+  old.dispatch("click", { target: old, clientX: 20, clientY: 20 });
+  old.close();
+  assert.equal(dialogs[1].open, true, "the next request is still waiting for its person");
+  declineButton(dialogs[1]).click();
+  assert.deepEqual(await second, { decision: "declined" });
+});
+
+test("a dialog that cannot open resolves closed and the next request still shows", async () => {
+  reset();
+  const original = FakeDialog.prototype.showModal;
+  FakeDialog.prototype.showModal = function () { throw new Error("not allowed"); };
+  let first;
+  try {
+    first = domConsentSurface(request);
+    await tick();
+  } finally {
+    FakeDialog.prototype.showModal = original;
+  }
+  assert.deepEqual(await first, { decision: "closed" });
+  assert.equal(dialogs[0].removed, true);
+  const second = domConsentSurface(request);
+  await tick();
+  assert.equal(dialogs[1].open, true);
+  declineButton(dialogs[1]).click();
+  assert.deepEqual(await second, { decision: "declined" });
+});

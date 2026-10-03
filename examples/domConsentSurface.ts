@@ -27,21 +27,17 @@
  * - Only one prompt exists at a time. A model that fires three consequential
  *   calls in a row must not stack three dialogs; the later ones queue, and
  *   one more than the queue holds is refused as `busy`.
+ *
+ * The queueing, deadlines, cancellation and the binding of every answer to
+ * the request on screen all come from `createConsentQueue`. This file only
+ * draws what the queue says is displayed, and reports clicks back by id.
  */
 
-import type { ConsentRequest, ConsentResult, ConsentSurface } from "../src/index.js";
-import { CONSENT_DEFAULT_TIMEOUT_MS } from "../src/index.js";
+import type { ConsentSurface, DisplayedConsentRequest } from "../src/index.js";
+import { createConsentQueue } from "../src/index.js";
 
-let pending: Promise<unknown> = Promise.resolve();
-let queued = 0;
-const MAX_PENDING_PROMPTS = 3;
-
-function randomToken(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
-}
+/** At most three prompts, open or waiting. A fourth resolves `busy`. */
+const queue = createConsentQueue({ capacity: 3 });
 
 function element<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -68,148 +64,113 @@ function formatDuration(ms: number): string {
   return `${minutes} minute${minutes === 1 ? "" : "s"}`;
 }
 
-function prompt(request: ConsentRequest, signal?: AbortSignal): Promise<ConsentResult> {
-  if (signal?.aborted) return Promise.resolve({ decision: "closed" });
-  return new Promise<ConsentResult>((resolve) => {
-    let settled = false;
-    const dialog = document.createElement("dialog");
+/** Build the dialog for one displayed request. Answers name that request's id. */
+function render(request: DisplayedConsentRequest): { dialog: HTMLDialogElement; decline: HTMLButtonElement } {
+  const dialog = document.createElement("dialog");
 
-    const finish = (result: ConsentResult) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timer);
-      signal?.removeEventListener("abort", cancel);
-      try { dialog.close(); } catch { /* Dismissal is still final if the host dialog fails. */ }
-      finally { dialog.remove(); resolve(result); }
-    };
+  // Structure and class names only — the look lives in consent-surface.css,
+  // so restyling never means touching the behavior below.
+  // IDs must be unique in the document, not just in this module: a page can
+  // load two copies of this file, or carry its own mm-consent-* markup, and a
+  // duplicate id would let a screen reader announce another request's words.
+  // The queue's request id is random, not a sequence, so it serves.
+  const id = `mm-consent-${request.id}`;
+  dialog.setAttribute("class", "mm-consent");
+  dialog.setAttribute("aria-labelledby", `${id}-title`);
+  dialog.setAttribute("aria-describedby", `${id}-detail ${id}-expiry`);
 
-    const cancel = () => finish({ decision: "closed" });
-    signal?.addEventListener("abort", cancel, { once: true });
-    const timeoutMs = request.timeoutMs ?? CONSENT_DEFAULT_TIMEOUT_MS;
-    const timer = window.setTimeout(() => finish({ decision: "timeout" }), timeoutMs);
+  // Say who is asking. The page did not open this dialog; an agent did.
+  const eyebrow = element("p", "mm-consent__eyebrow", "Agent request");
 
-    // Structure and class names only — the look lives in consent-surface.css,
-    // so restyling never means touching the behavior below.
-    // IDs must be unique in the document, not just in this module: a page can
-    // load two copies of this file, or carry its own mm-consent-* markup, and a
-    // duplicate id would let a screen reader announce another request's words.
-    const id = `mm-consent-${randomToken()}`;
-    dialog.setAttribute("class", "mm-consent");
-    dialog.setAttribute("aria-labelledby", `${id}-title`);
-    dialog.setAttribute("aria-describedby", `${id}-detail ${id}-expiry`);
+  const title = element("h2", "mm-consent__title", request.title);
+  title.setAttribute("id", `${id}-title`);
 
-    // Say who is asking. The page did not open this dialog; an agent did.
-    const eyebrow = element("p", "mm-consent__eyebrow", "Agent request");
+  const detail = element("p", "mm-consent__detail", request.detail);
+  detail.setAttribute("id", `${id}-detail`);
 
-    const title = element("h2", "mm-consent__title", request.title);
-    title.setAttribute("id", `${id}-title`);
+  // The meter is a CSS animation over the request's own deadline, so the
+  // countdown needs no extra timers and cannot drift from the real one.
+  const meter = element("div", "mm-consent__meter");
+  meter.setAttribute("aria-hidden", "true");
+  const fill = element("span", "mm-consent__meter-fill");
+  // CSSOM, not a style attribute: a strict CSP (no 'unsafe-inline' in
+  // style-src) blocks setAttribute("style"), which would silently fall back
+  // to the stylesheet's default duration and drain on the wrong deadline.
+  fill.style.setProperty("--mm-consent-duration", `${request.timeoutMs}ms`);
+  meter.append(fill);
 
-    const detail = element("p", "mm-consent__detail", request.detail);
-    detail.setAttribute("id", `${id}-detail`);
+  const expiry = element(
+    "p",
+    "mm-consent__expiry",
+    `Expires in ${formatDuration(request.timeoutMs)}. Nothing happens unless you choose \u201c${request.confirmLabel}\u201d.`,
+  );
+  expiry.setAttribute("id", `${id}-expiry`);
 
-    // The meter is a CSS animation over the request's own deadline, so the
-    // countdown needs no extra timers and cannot drift from the real one.
-    const meter = element("div", "mm-consent__meter");
-    meter.setAttribute("aria-hidden", "true");
-    const fill = element("span", "mm-consent__meter-fill");
-    // CSSOM, not a style attribute: a strict CSP (no 'unsafe-inline' in
-    // style-src) blocks setAttribute("style"), which would silently fall back
-    // to the stylesheet's default duration and drain on the wrong deadline.
-    fill.style.setProperty("--mm-consent-duration", `${timeoutMs}ms`);
-    meter.append(fill);
+  const confirm = element("button", "mm-consent__button mm-consent__button--confirm", request.confirmLabel);
+  confirm.type = "button";
+  // The queue checks event.isTrusted itself; a script's click() is ignored.
+  confirm.addEventListener("click", (event) => { queue.confirm(request.id, event); });
 
-    const expiry = element(
-      "p",
-      "mm-consent__expiry",
-      `Expires in ${formatDuration(timeoutMs)}. Nothing happens unless you choose \u201c${request.confirmLabel}\u201d.`,
-    );
-    expiry.setAttribute("id", `${id}-expiry`);
+  const decline = element("button", "mm-consent__button mm-consent__button--decline", "Not now");
+  decline.type = "button";
+  decline.addEventListener("click", () => { queue.decline(request.id); });
 
-    const confirm = element("button", "mm-consent__button mm-consent__button--confirm", request.confirmLabel);
-    confirm.type = "button";
-    confirm.addEventListener("click", (event) => {
-      if (!event.isTrusted) return;
-      finish({ decision: "confirmed", auditToken: randomToken() });
-    });
-
-    const decline = element("button", "mm-consent__button mm-consent__button--decline", "Not now");
-    decline.type = "button";
-    decline.addEventListener("click", () => finish({ decision: "declined" }));
-
-    // Escape. Dismissal is never consent.
-    dialog.addEventListener("cancel", (event) => {
-      event.preventDefault();
-      finish({ decision: "closed" });
-    });
-    // A click on the ::backdrop targets the dialog itself — but so does a click
-    // on the dialog's own padding, so the pointer must also fall outside the
-    // dialog's box before it counts as a backdrop dismissal.
-    dialog.addEventListener("click", (event) => {
-      if (event.target !== dialog) return;
-      const box = dialog.getBoundingClientRect();
-      const outside =
-        event.clientX < box.left ||
-        event.clientX > box.right ||
-        event.clientY < box.top ||
-        event.clientY > box.bottom;
-      if (outside) finish({ decision: "closed" });
-    });
-    dialog.addEventListener("close", () => finish({ decision: "closed" }));
-
-    // Decline comes first in reading order and holds focus; Confirm sits at
-    // the end of the row where a deliberate choice expects to find it.
-    const actions = element("div", "mm-consent__actions");
-    actions.append(decline, confirm);
-    dialog.append(eyebrow, title, detail, meter, expiry, actions);
-    document.body.appendChild(dialog);
-    try { dialog.showModal(); }
-    catch { finish({ decision: "closed" }); return; }
-    // Deliberately the safe control. See the note above; the deployed card in
-    // reference/HandoffConsentCard.tsx does the same thing for the same reason.
-    decline.focus();
+  // Escape. Dismissal is never consent.
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    queue.dismiss(request.id);
   });
+  // A click on the ::backdrop targets the dialog itself — but so does a click
+  // on the dialog's own padding, so the pointer must also fall outside the
+  // dialog's box before it counts as a backdrop dismissal.
+  dialog.addEventListener("click", (event) => {
+    if (event.target !== dialog) return;
+    const box = dialog.getBoundingClientRect();
+    const outside =
+      event.clientX < box.left ||
+      event.clientX > box.right ||
+      event.clientY < box.top ||
+      event.clientY > box.bottom;
+    if (outside) queue.dismiss(request.id);
+  });
+  // A dialog closed out from under us is a dismissal. When this module closes
+  // it after an answer, the id is no longer displayed and the queue ignores it.
+  dialog.addEventListener("close", () => { queue.dismiss(request.id); });
+
+  // Decline comes first in reading order and holds focus; Confirm sits at
+  // the end of the row where a deliberate choice expects to find it.
+  const actions = element("div", "mm-consent__actions");
+  actions.append(decline, confirm);
+  dialog.append(eyebrow, title, detail, meter, expiry, actions);
+  return { dialog, decline };
 }
 
-/** Serializes prompts so concurrent tool calls queue instead of stacking. */
-export const domConsentSurface: ConsentSurface = (request, options = {}) => {
-  const timeoutMs = request.timeoutMs ?? CONSENT_DEFAULT_TIMEOUT_MS;
-  if (options.signal?.aborted ||
-      !Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
-    return Promise.resolve({ decision: "closed" });
+let mounted: { id: string; dialog: HTMLDialogElement } | null = null;
+
+/** Make the DOM match the queue: at most one dialog, for the displayed request. */
+function sync(): void {
+  const request = queue.getSnapshot();
+  if (mounted !== null && mounted.id === request?.id) return;
+  if (mounted !== null) {
+    const { dialog } = mounted;
+    mounted = null;
+    try { dialog.close(); } catch { /* Removal is still final if the host dialog fails. */ }
+    finally { dialog.remove(); }
   }
-  // Full is not dismissed: nobody saw this request, so it is `busy`, which
-  // the model can tell apart from a person closing the prompt.
-  if (queued >= MAX_PENDING_PROMPTS) return Promise.resolve({ decision: "busy" });
-  const deadline = Date.now() + timeoutMs;
-  queued += 1;
-  const controller = new AbortController();
-  let settled = false;
-  let finish!: (value: ConsentResult) => void;
-  const answer = new Promise<ConsentResult>(resolve => {
-    finish = value => {
-      if (settled) return;
-      settled = true;
-      // Capacity counts unanswered requests, so free the slot the moment this
-      // one settles. Waiting for its turn in the chain would keep an expired
-      // request counted behind a prompt that is still open.
-      queued -= 1;
-      clearTimeout(timer);
-      options.signal?.removeEventListener("abort", cancel);
-      resolve(value);
-      controller.abort();
-    };
-  });
-  const cancel = () => finish({ decision: "closed" });
-  const timer = setTimeout(() => finish({ decision: "timeout" }), timeoutMs);
-  options.signal?.addEventListener("abort", cancel, { once: true });
-  if (options.signal?.aborted) cancel();
-  const next = pending.then(async () => {
-    if (settled) return;
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) { finish({ decision: "timeout" }); return; }
-    try { finish(await prompt({ ...request, timeoutMs: remaining }, controller.signal)); }
-    catch { finish({ decision: "closed" }); }
-  });
-  pending = next;
-  return answer;
-};
+  if (request === null) return;
+  const { dialog, decline } = render(request);
+  mounted = { id: request.id, dialog };
+  document.body.appendChild(dialog);
+  // A dialog that cannot open cannot be answered. Dismissing it re-enters
+  // sync() and moves on to the next request, so nothing may run after this.
+  try { dialog.showModal(); }
+  catch { queue.dismiss(request.id); return; }
+  // Deliberately the safe control. See the note above; the deployed card in
+  // reference/HandoffConsentCard.tsx does the same thing for the same reason.
+  decline.focus();
+}
+
+queue.subscribe(sync);
+
+/** Serializes prompts so concurrent tool calls queue instead of stacking. */
+export const domConsentSurface: ConsentSurface = queue.request;

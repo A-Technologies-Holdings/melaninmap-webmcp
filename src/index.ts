@@ -19,6 +19,14 @@ export {
   type ToolSpec,
 } from "./defineTool.js";
 export {
+  CONSENT_QUEUE_DEFAULT_CAPACITY,
+  createConsentQueue,
+  type ConsentConfirmEvent,
+  type ConsentQueue,
+  type ConsentQueueOptions,
+  type DisplayedConsentRequest,
+} from "./queue.js";
+export {
   detectModelContext,
   registerAgentTools,
   registerAgentToolsAsync,
