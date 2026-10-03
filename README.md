@@ -61,10 +61,10 @@ The package is **ESM-only**. There is no CommonJS build: a CommonJS consumer
 loads it with a dynamic `import()`. The runtime targets browsers; Node 22 or
 newer is needed only for the build and the check suite.
 
-Or skip the dependency entirely: it is about 800 lines of code (1,400 with the
-comments that explain why), plus about 30 for the optional React hook, with
-nothing to configure, so copying `src/` into your project is a perfectly good
-answer.
+Or skip the dependency entirely: it is about 960 lines of code (1,670 with the
+comments that explain why), plus about 30 for the optional React hook and 180
+for the optional server helpers, with nothing to configure, so copying `src/`
+into your project is a perfectly good answer.
 
 ## Use
 
@@ -147,6 +147,7 @@ an instruction the model can act on:
 | `consent_timeout` | The prompt expired unanswered. | Not automatically. |
 | `consent_closed` | The prompt was dismissed, could not be shown, or the surface failed. | Not automatically. |
 | `consent_busy` | Another confirmation is already open, so this one was never shown. | Once, later, after that one is answered. |
+| `consent_unverified` | The person confirmed, but `exchangeConsent` produced no proof, so nothing ran. | Not automatically. |
 | `tool_cancelled` | The host cancelled the call. | Not automatically. |
 
 `busy` exists so an agent can tell "nobody saw this" from "somebody dismissed
@@ -167,8 +168,10 @@ defineConsequentialTool({
 
 It is called exactly once for every call that reached the gate, at the moment
 the decision is known and before the action runs. `decision` is `confirmed`,
-`declined`, `timeout`, `closed`, `busy`, or `cancelled` when the host aborted
-the call while the prompt was open. The record deliberately carries no
+`declined`, `timeout`, `closed`, `busy`, `cancelled` when the host aborted
+the call while the prompt was open, or `unverified` when a confirmation could
+not be exchanged for a proof (see below). With an exchange configured,
+`confirmed` is reported after the exchange succeeds. The record deliberately carries no
 arguments and no tokens: a decision log tends to travel further than the
 action does, and arguments are where personal data lives. It is an observer,
 not a participant — never awaited, its return value ignored, and a throw or a
@@ -309,7 +312,110 @@ ceilings. That authorizes one bounded operation; it still is not
 cryptographic proof that a human finger performed the tap.
 
 Your server still needs its own defenses. [SECURITY.md](./SECURITY.md) has the
-threat model and the specific controls we run behind this.
+threat model and the specific controls we run behind this. The next section is
+the proof exchange, generalized so you do not have to build it yourself.
+
+## Consent proofs: binding a confirmation to one operation
+
+The pattern, in three hops:
+
+```text
+page (tool)                      your consent endpoint              your action endpoint
+-----------                      ---------------------              --------------------
+person confirms in the gate
+exchangeConsent({ toolName,  --> your checks (session, rate
+  argsDigest, auditToken })      limits, server-minted state)
+                             <-- signConsentProof(...)
+execute(args, { proof })     ---------------------------------->   argsDigest(toolName, args)
+                                                                    verifyConsentProof(...)
+                                                                    act only if ok
+```
+
+On the page, give the consequential tool an `exchangeConsent` step. It runs
+after the person confirms and before `execute`, and receives the tool name, the
+`argsDigest` of the exact arguments `execute` will get, the audit token, and an
+abort signal. Return the proof string. If it throws, rejects, returns anything
+but a non-empty string, or takes longer than `CONSENT_EXCHANGE_TIMEOUT_MS`
+(30 s), the call fails closed as `consent_unverified` and the action never
+runs. A host cancellation during the exchange is `tool_cancelled`.
+
+```ts
+const hold = defineConsequentialTool({
+  // ...name, parseArgs, consent, describeConsent as before
+  exchangeConsent: async ({ toolName, argsDigest, auditToken, signal }) => {
+    const res = await fetch("/api/consent", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ toolName, argsDigest, auditToken }),
+      signal,
+    });
+    if (!res.ok) throw new Error(`consent ${res.status}`);
+    return (await res.json()).proof;
+  },
+  execute: (args, consent, { signal }) =>
+    fetch("/api/hold", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ args, proof: consent.proof }),
+      signal,
+    }).then((res) => res.json()),
+});
+```
+
+On the server, import from `@melaninmap/webmcp-consent/server`. It is WebCrypto
+only — no `node:` imports — so it runs in Node 22+, Workers and other edge
+runtimes. Keep the secret (32 bytes or more, random) on the server.
+
+```ts
+import { argsDigest, signConsentProof, verifyConsentProof } from "@melaninmap/webmcp-consent/server";
+
+// POST /api/consent — your own checks first, then mint.
+const proof = await signConsentProof({
+  secret: env.CONSENT_SECRET,
+  toolName: body.toolName,
+  argsDigest: body.argsDigest,
+  audience: "https://example.com/api/hold",
+  ttlMs: 30_000,
+});
+
+// POST /api/hold — recompute the digest from what you are about to do.
+const result = await verifyConsentProof({
+  secret: env.CONSENT_SECRET,
+  proof: body.proof,
+  toolName: "hold_tickets",
+  argsDigest: await argsDigest("hold_tickets", body.args),
+  audience: "https://example.com/api/hold",
+  // Single use is your storage. Atomic insert-if-absent; false if present.
+  consume: (nonce, expiresAt) => db.insertNonceIfAbsent(nonce, expiresAt),
+});
+if (!result.ok) return new Response(null, { status: 403 }); // log result.reason, do not echo it
+```
+
+The proof is `v1.<payload>.<mac>`: HMAC-SHA-256 over a base64url JSON payload
+holding the audience, tool name, argument digest, issue and expiry times and a
+random nonce. Verification compares the MAC in constant time, allows 5 seconds
+of clock skew, checks everything else only after the MAC, and calls `consume`
+last — so a forgery, an expired proof or a misdirected one never burns a nonce.
+It never throws: every outcome is `{ ok: true, proof }` or
+`{ ok: false, reason }`.
+
+`argsDigest` is SHA-256 over canonical JSON (sorted keys, no whitespace) of
+`["webmcp-consent/args/v1", toolName, args]`. It refuses anything that is not
+plain JSON — `undefined`, `Date`, `NaN`, class instances, cycles — instead of
+coercing it, so `parseArgs` must return plain JSON on a tool with an exchange.
+The canonical form is intended to match RFC 8785 (JCS), so a server in another
+language can reproduce it.
+
+**What a valid proof proves:** your consent endpoint issued it, recently, for
+this tool, these exact arguments and this audience, and it has not been used
+before. That closes the direct-writer bypass, binds the authorization to one
+exact operation, and gives you one place — the consent endpoint — to rate
+limit.
+
+**What it does not prove:** that a human was there. A script controlling the
+same browser session can call your consent endpoint exactly as the page does
+and receive a perfectly valid proof. It is authorization for one bounded
+operation, not evidence of a person. See [SECURITY.md](./SECURITY.md).
 
 ## The pre-deployment contract
 

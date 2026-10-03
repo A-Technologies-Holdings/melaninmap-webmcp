@@ -102,6 +102,52 @@ Treat the consent token as what it is: a UI audit signal, not authorization.
 Treat the server proof as what it is too: authorization for one bounded
 operation, not proof of human presence.
 
+#### The proof helpers in this package
+
+`exchangeConsent` and `@melaninmap/webmcp-consent/server` package that same
+exchange so you do not have to write it. Be exact about what you get.
+
+A proof that passes `verifyConsentProof` proves that **your consent endpoint
+issued it, within its lifetime, for this tool, these exact arguments and this
+audience, and that it had not been used before.** That is worth having:
+
+- the action endpoint stops accepting a bare "consent: yes" field, which
+  closes the direct-writer bypass;
+- authorization binds to one exact operation — a proof minted for "hold 2
+  tickets to event A" fails as `wrong_args` against "hold 200" or "event B",
+  and as `replayed` the second time;
+- the consent endpoint becomes the one place to rate limit the work.
+
+It does **not** prove a human was present. The consent endpoint cannot see the
+page. A script running in the same browser session can call it with exactly
+the inputs the page would send and receive a perfectly valid proof. The proof
+moves the trust question to your consent endpoint; it does not answer it. If
+that endpoint mints a proof for anyone who asks, you have built a slower bare
+consent field.
+
+What the helpers cannot do for you:
+
+- **Single use is your storage.** `consume(nonce, expiresAt)` is required and
+  must insert-if-absent atomically. A read-then-write two requests can
+  interleave accepts a proof twice. Keep the record until `expiresAt`.
+- **The secret stays on the server.** At least 32 random bytes. A secret in a
+  browser bundle lets anyone mint proofs. Use a distinct `audience` per
+  endpoint and per environment so a staging proof is worthless in production,
+  even if someone reuses a secret.
+- **Recompute the digest on the server** from the arguments the action
+  endpoint is about to act on. Never take the digest from the client.
+- **Do not echo the failure reason.** Log it; answer the client with one
+  undifferentiated 403.
+- **Everything in "Put the security boundary where the server can verify
+  something" above still applies.** Server-minted state, a destination
+  allowlist, rate limits keyed on what the caller cannot rotate, and no money
+  or personal data on this path.
+
+The MAC comparison avoids early exits, but JavaScript makes no hard
+constant-time guarantee. Expiry tolerates five seconds of clock skew, and
+lifetimes are capped at ten minutes. Proofs are meant to be spent within
+seconds.
+
 ### 3. Attribution poisoning
 
 If your tools write analytics, someone will write junk into them. For us this

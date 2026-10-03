@@ -44,6 +44,34 @@ versioned path.
   a dialog that cannot be built or opened now resolves `closed` at once
   instead of blocking the queue. The playground fires four requests to show
   `busy`.
+- **Server-bound consent proofs.** `exchangeConsent` on
+  `defineConsequentialTool` runs after a confirmation and before `execute`,
+  receiving `{ toolName, argsDigest, auditToken?, signal }`, and must return a
+  proof string. A throw, a rejection, a non-string or empty answer, a
+  non-function, args that cannot be digested, or no answer within
+  `CONSENT_EXCHANGE_TIMEOUT_MS` (30 s) fails closed as `consent_unverified`
+  and the action never runs; a host abort during the exchange is
+  `tool_cancelled`. The proof reaches `execute` as `consent.proof`
+  (`ConsentConfirmation` gains an optional `proof`; existing signatures are
+  unchanged). `onDecision` reports `unverified` for a failed exchange and,
+  with an exchange configured, reports `confirmed` only once a proof is in
+  hand. New exported types `ConsentExchange` and `ConsentExchangeRequest`.
+- **`argsDigest(toolName, args)`**: SHA-256 (WebCrypto) over canonical JSON
+  of `["webmcp-consent/args/v1", toolName, args]` — sorted keys, no
+  whitespace, non-JSON values rejected with the offending path rather than
+  coerced. Exported from the root and from `/server`.
+- **`@melaninmap/webmcp-consent/server`**: `signConsentProof` and
+  `verifyConsentProof`. HMAC-SHA-256 over a base64url payload (`v1.<payload>.<mac>`)
+  binding audience, tool, argument digest, issue and expiry times and a
+  random nonce. Verification compares the MAC in constant time, checks the
+  payload only after the MAC, allows 5 s of clock skew, caps lifetimes at ten
+  minutes, and calls a REQUIRED `consume(nonce, expiresAt)` last — single use
+  is the host's storage. It never throws; it returns `{ ok: true, proof }` or
+  `{ ok: false, reason }`. WebCrypto only, no `node:` imports: Node 22+,
+  browsers, Workers.
+- SECURITY.md and README state what a proof proves (this exact operation was
+  authorized by your consent endpoint, once, recently) and what it does not
+  (that a human was present), with an end-to-end sketch.
 - `tsconfig.json` sets `"types": []`, so the library is typechecked without
   Node or test-tooling globals leaking in.
 
