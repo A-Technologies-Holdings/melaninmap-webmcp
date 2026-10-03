@@ -16,7 +16,7 @@ case "${1:-}" in
       npm run build:test
       # The behavioral suite is small and tightly coupled: keep it on ready PRs.
       # Expensive tarball/package analysis belongs to nightly and release runs.
-      npm test
+      node --test
     fi
     ;;
   dco)
@@ -26,7 +26,7 @@ case "${1:-}" in
     fi
     base_branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:?PR base branch required}"
     git check-ref-format "refs/heads/$base_branch"
-    git fetch origin "refs/heads/$base_branch:refs/remotes/origin/$base_branch"
+    git fetch origin "+refs/heads/$base_branch:refs/remotes/origin/$base_branch"
     export DCO_BASE
     DCO_BASE="$(git merge-base HEAD "refs/remotes/origin/$base_branch")"
     node scripts/check-dco.mjs
