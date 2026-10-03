@@ -9,7 +9,7 @@ green `main`. CI checks do not publish packages; releases remain manual.
 - You can publish to the `@melaninmap` npm scope (`npm whoami`), with 2FA
   ready for the publish OTP.
 - `main` is clean (`git status --porcelain`) and the release commit passed
-  `npm run check` in hosted CI. A configured workflow alone is not proof.
+  `npm run check` in hosted CI using a `release/*` PR branch or `ci:release` / `ci:full` label. Ready PR checks alone do not include package analysis. A configured workflow alone is not proof.
 - `CHANGELOG.md` has an entry for the version you are about to tag.
 
 ## Steps
