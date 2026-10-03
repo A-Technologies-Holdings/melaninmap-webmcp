@@ -37,11 +37,12 @@ Do not disclose a vulnerability in a public issue. Follow
 
 ## Public CI and DCO
 
-The Package checks workflow runs the full gate and verifies `Signed-off-by`
-trailers on PR commits, alongside the existing Buildkite pipeline. Hosted run
+Buildkite runs the focused package gate and verifies `Signed-off-by`
+trailers on ready PRs. Full package regression runs nightly and on release PRs
+(`release/*`, `ci:release` or `ci:full`); GitHub Actions is disabled. Hosted run
 results are the evidence that these checks executed. Maintainers can require
 `package` and `dco` in branch protection after the checks have reported once.
-This workflow checks the DCO trailer; it does not verify the signer's identity.
+The DCO gate checks the trailer; it does not verify the signer's identity.
 
 A second code owner must be a maintainer with repository write access who has
 accepted that responsibility. Do not add a placeholder account. The DCO GitHub

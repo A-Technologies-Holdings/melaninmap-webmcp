@@ -33,9 +33,9 @@ green `main`. CI checks do not publish packages; releases remain manual.
 
 `npm publish --provenance` attests the tarball against the CI that built it,
 but provenance only works from a supported OIDC provider (GitHub Actions or
-GitLab CI). The public CI workflow is configured, but manual local publishing does not
-produce CI provenance. Use a supported OIDC publishing workflow before claiming
-provenance; ordinary CI success alone is insufficient.
+GitLab CI). Publishing is manual and Buildkite validation does not supply npm OIDC
+provenance. Do not claim provenance from ordinary CI success. Any publishing
+automation needs separate review; GitHub-hosted CI remains retired.
 
 ## After publishing
 
