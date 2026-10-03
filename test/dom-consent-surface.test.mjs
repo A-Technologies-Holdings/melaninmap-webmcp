@@ -339,7 +339,9 @@ test("prompt backlog is bounded and cancellation removes the active dialog", asy
   const first = domConsentSurface(request, { signal: controller.signal });
   const second = domConsentSurface({ ...request, timeoutMs: 20 });
   const third = domConsentSurface({ ...request, timeoutMs: 20 });
-  assert.deepEqual(await domConsentSurface(request), { decision: "closed" });
+  // A fourth request is not shown and not refused by anyone: it is `busy`,
+  // which the model can tell apart from a dismissal.
+  assert.deepEqual(await domConsentSurface(request), { decision: "busy" });
   await tick();
   controller.abort();
   assert.deepEqual(await first, { decision: "closed" });

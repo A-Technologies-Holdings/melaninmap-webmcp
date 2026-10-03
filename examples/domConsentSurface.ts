@@ -25,7 +25,8 @@
  *   becomes a timeout, not a promise that hangs and a tool call that never
  *   returns.
  * - Only one prompt exists at a time. A model that fires three consequential
- *   calls in a row must not stack three dialogs; the later ones queue.
+ *   calls in a row must not stack three dialogs; the later ones queue, and
+ *   one more than the queue holds is refused as `busy`.
  */
 
 import type { ConsentRequest, ConsentResult, ConsentSurface } from "../src/index.js";
@@ -172,10 +173,13 @@ function prompt(request: ConsentRequest, signal?: AbortSignal): Promise<ConsentR
 /** Serializes prompts so concurrent tool calls queue instead of stacking. */
 export const domConsentSurface: ConsentSurface = (request, options = {}) => {
   const timeoutMs = request.timeoutMs ?? CONSENT_DEFAULT_TIMEOUT_MS;
-  if (queued >= MAX_PENDING_PROMPTS || options.signal?.aborted ||
+  if (options.signal?.aborted ||
       !Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
     return Promise.resolve({ decision: "closed" });
   }
+  // Full is not dismissed: nobody saw this request, so it is `busy`, which
+  // the model can tell apart from a person closing the prompt.
+  if (queued >= MAX_PENDING_PROMPTS) return Promise.resolve({ decision: "busy" });
   const deadline = Date.now() + timeoutMs;
   queued += 1;
   const controller = new AbortController();

@@ -16,6 +16,7 @@
 import {
   CONSENT_DEFAULT_TIMEOUT_MS,
   consentRefusal,
+  type ConsentDecision,
   type ConsentRequest,
   type ConsentResult,
   type ConsentSurface,
@@ -288,6 +289,7 @@ const REFUSAL_DECISIONS: ReadonlySet<unknown> = new Set([
   "declined",
   "timeout",
   "closed",
+  "busy",
 ]);
 
 /**
@@ -316,7 +318,7 @@ function normalizeConsentResult(value: unknown): ConsentResult {
       : { decision: "confirmed" };
   }
   return REFUSAL_DECISIONS.has(decision)
-    ? { decision: decision as "declined" | "timeout" | "closed" }
+    ? { decision: decision as Exclude<ConsentDecision, "confirmed"> }
     : { decision: "closed" };
 }
 
