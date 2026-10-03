@@ -2,6 +2,7 @@
 steps:
   - label: ":node: Package checks"
     key: package
+    if: "build.pull_request.id != null && !build.pull_request.draft && !(build.pull_request.labels includes 'ci:full') && !(build.pull_request.labels includes 'ci:release') && build.branch !~ /^release\\//"
     command: "bash scripts/buildkite-check.sh package"
     timeout_in_minutes: 15
     agents:
@@ -13,6 +14,7 @@ steps:
           name: "Buildkite / WebMCP package"
   - label: ":memo: Contribution sign-off"
     key: dco
+    if: "build.pull_request.id != null"
     command: "bash scripts/buildkite-check.sh dco"
     timeout_in_minutes: 5
     agents:
@@ -22,3 +24,28 @@ steps:
     notify:
       - github_check:
           name: "Buildkite / WebMCP DCO"
+
+  - label: ":package: Release PR regression"
+    key: release-regression
+    if: "build.pull_request.id != null && (build.pull_request.labels includes 'ci:full' || build.pull_request.labels includes 'ci:release' || build.branch =~ /^release\\//)"
+    command: "bash scripts/buildkite-check.sh regression"
+    timeout_in_minutes: 15
+    agents:
+      queue: "macos-15-medium"
+    concurrency: 1
+    concurrency_group: "melanin-map/pr-validation-free"
+    notify:
+      - github_check:
+          name: "Buildkite / WebMCP package"
+  - label: ":crescent_moon: Nightly full regression"
+    key: nightly-regression
+    if: "build.source == 'schedule' && build.branch == 'main'"
+    command: "bash scripts/buildkite-check.sh regression"
+    timeout_in_minutes: 15
+    agents:
+      queue: "macos-15-medium"
+    concurrency: 1
+    concurrency_group: "melanin-map/pr-validation-free"
+    notify:
+      - github_check:
+          name: "Buildkite / WebMCP nightly regression"

@@ -2,10 +2,22 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 case "${1:-}" in
-  package)
+  package|regression)
     node -e 'if (Number(process.versions.node.split(".")[0]) < 22) throw Error("Node 22+ required")'
     npm ci --ignore-scripts
-    npm run check
+    scope="${1}"
+    if [[ "$scope" == "regression" ]]; then
+      npm run check
+    else
+      npm run typecheck
+      npm run check:contract
+      npm run check:openapi
+      npm run build
+      npm run build:test
+      # The behavioral suite is small and tightly coupled: keep it on ready PRs.
+      # Expensive tarball/package analysis belongs to nightly and release runs.
+      node --test
+    fi
     ;;
   dco)
     if [[ "${BUILDKITE_PULL_REQUEST:-false}" == "false" ]]; then
@@ -19,5 +31,5 @@ case "${1:-}" in
     DCO_BASE="$(git merge-base HEAD "refs/remotes/origin/$base_branch")"
     node scripts/check-dco.mjs
     ;;
-  *) echo 'Usage: buildkite-check.sh package|dco' >&2; exit 2 ;;
+  *) echo 'Usage: buildkite-check.sh package|regression|dco' >&2; exit 2 ;;
 esac
