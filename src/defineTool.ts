@@ -70,9 +70,12 @@ const CANCELLED = {
 function executionOptions(options: unknown): ToolExecutionOptions {
   try {
     const signal = (options as { signal?: unknown } | null | undefined)?.signal;
-    return typeof AbortSignal !== "undefined" && signal instanceof AbortSignal
-      ? { signal }
-      : {};
+    if (typeof AbortSignal === "undefined") return {};
+    // The native getter validates the AbortSignal brand across window realms;
+    // instanceof rejects genuine signals created by a parent frame.
+    const aborted = Object.getOwnPropertyDescriptor(AbortSignal.prototype, "aborted")?.get;
+    if (!aborted || typeof aborted.call(signal) !== "boolean") return {};
+    return { signal: signal as AbortSignal };
   } catch {
     return {};
   }

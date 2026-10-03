@@ -60,3 +60,23 @@ test('non-AbortSignal execution options are ignored, never thrown on', async()=>
     assert.deepEqual(uncaught,[]);
   }finally{process.off('uncaughtException',onUncaught);}
 });
+
+// Preserve the native signal brand while changing its prototype identity,
+// modeling the constructor mismatch of a signal supplied by another realm.
+test('native cancellation survives a different signal prototype', async () => {
+  const foreignPrototype = Object.create(EventTarget.prototype, Object.getOwnPropertyDescriptors(AbortSignal.prototype));
+  const controller = new AbortController();
+  Object.setPrototypeOf(controller.signal, foreignPrototype);
+  assert.equal(controller.signal instanceof AbortSignal, false);
+  let prompts = 0, actions = 0;
+  const tool = make({consent:()=>{prompts++; return new Promise(()=>{})},execute:async()=>{actions++;return {ok:true}}});
+  const pending = tool.execute({}, {signal:controller.signal});
+  controller.abort();
+  assert.equal(result(await pending).code,'tool_cancelled');
+  assert.equal(prompts,1); assert.equal(actions,0);
+  const cancelled = new AbortController();
+  Object.setPrototypeOf(cancelled.signal, foreignPrototype);
+  cancelled.abort();
+  assert.equal(result(await tool.execute({}, {signal:cancelled.signal})).code,'tool_cancelled');
+  assert.equal(prompts,1);
+});
