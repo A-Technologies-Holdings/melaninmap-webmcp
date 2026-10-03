@@ -40,10 +40,9 @@ Do not disclose a vulnerability in a public issue. Follow
 Buildkite runs the focused package gate and verifies `Signed-off-by`
 trailers on ready PRs. Full package regression runs nightly and on release PRs
 (`release/*`, `ci:release` or `ci:full`); GitHub Actions is disabled. Hosted run
-results are the evidence that these checks executed. Maintainers can require
-`package` and `dco` in branch protection after the checks have reported once.
+results are the evidence that these checks executed. The required checks are `Buildkite / WebMCP package`, `Buildkite / WebMCP DCO`
+and `semgrep-cloud-platform/scan`.
 The DCO gate checks the trailer; it does not verify the signer's identity.
 
 A second code owner must be a maintainer with repository write access who has
-accepted that responsibility. Do not add a placeholder account. The DCO GitHub
-App is an optional alternative if Actions capacity becomes unavailable.
+accepted that responsibility. Do not add a placeholder account. DCO validation stays in Buildkite; GitHub Actions is not a fallback.
