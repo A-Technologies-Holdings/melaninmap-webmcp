@@ -42,8 +42,6 @@ function randomToken(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
-let promptSeq = 0;
-
 function element<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   className: string,
@@ -55,11 +53,17 @@ function element<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/** "5 seconds", "1 minute", "2 minutes" — what a person reads, not a number of ms. */
+/**
+ * "5 seconds", "90 seconds", "2 minutes" — what a person reads, not a number
+ * of ms. It must never promise more time than remains: whole seconds round up
+ * by under a second (the text's own resolution), seconds are kept below two
+ * minutes, and minutes always round DOWN. A queued prompt shows its remaining
+ * time, so "2 minutes" for 90 seconds would overstate a real deadline.
+ */
 function formatDuration(ms: number): string {
   const seconds = Math.max(1, Math.ceil(ms / 1000));
-  if (seconds < 90) return `${seconds} second${seconds === 1 ? "" : "s"}`;
-  const minutes = Math.round(seconds / 60);
+  if (seconds < 120) return `${seconds} second${seconds === 1 ? "" : "s"}`;
+  const minutes = Math.floor(seconds / 60);
   return `${minutes} minute${minutes === 1 ? "" : "s"}`;
 }
 
@@ -85,7 +89,10 @@ function prompt(request: ConsentRequest, signal?: AbortSignal): Promise<ConsentR
 
     // Structure and class names only — the look lives in consent-surface.css,
     // so restyling never means touching the behavior below.
-    const id = `mm-consent-${++promptSeq}`;
+    // IDs must be unique in the document, not just in this module: a page can
+    // load two copies of this file, or carry its own mm-consent-* markup, and a
+    // duplicate id would let a screen reader announce another request's words.
+    const id = `mm-consent-${randomToken()}`;
     dialog.setAttribute("class", "mm-consent");
     dialog.setAttribute("aria-labelledby", `${id}-title`);
     dialog.setAttribute("aria-describedby", `${id}-detail ${id}-expiry`);
@@ -104,7 +111,10 @@ function prompt(request: ConsentRequest, signal?: AbortSignal): Promise<ConsentR
     const meter = element("div", "mm-consent__meter");
     meter.setAttribute("aria-hidden", "true");
     const fill = element("span", "mm-consent__meter-fill");
-    fill.setAttribute("style", `--mm-consent-duration: ${timeoutMs}ms`);
+    // CSSOM, not a style attribute: a strict CSP (no 'unsafe-inline' in
+    // style-src) blocks setAttribute("style"), which would silently fall back
+    // to the stylesheet's default duration and drain on the wrong deadline.
+    fill.style.setProperty("--mm-consent-duration", `${timeoutMs}ms`);
     meter.append(fill);
 
     const expiry = element(

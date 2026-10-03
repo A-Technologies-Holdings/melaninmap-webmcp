@@ -22,6 +22,11 @@ class FakeElement {
     this.children = [];
     this.listeners = new Map();
     this.attributes = new Map();
+    const props = new Map();
+    this.style = {
+      setProperty: (name, value) => props.set(name, value),
+      getPropertyValue: (name) => props.get(name) ?? "",
+    };
     this.textContent = "";
     this.type = "";
     this.removed = false;
@@ -167,12 +172,49 @@ test("the dialog is labelled by its title and says when it expires", async () =>
   );
   assert.match(expiry.textContent, /^Expires in 5 seconds\./);
   assert.match(expiry.textContent, /Open tickets/);
-  assert.equal(
-    find(dialog, "mm-consent__meter-fill").attributes.get("style"),
-    "--mm-consent-duration: 5000ms",
-  );
+  // The meter drains over the prompt's remaining time, give or take the
+  // millisecond between the call and the mount.
+  const duration = find(dialog, "mm-consent__meter-fill").style.getPropertyValue("--mm-consent-duration");
+  assert.match(duration, /^(4999|5000)ms$/);
   declineButton(dialog).click();
   return pending;
+});
+
+// The written expiry must never promise more time than remains. Rounding 90
+// seconds to "2 minutes" would overstate the deadline by half a minute.
+test("the expiry text never overstates the time remaining", async () => {
+  const cases = [
+    [90_000, /^Expires in 90 seconds\./],
+    [119_000, /^Expires in 119 seconds\./],
+    [150_000, /^Expires in 2 minutes\./],
+    [179_000, /^Expires in 2 minutes\./],
+  ];
+  for (const [timeoutMs, expected] of cases) {
+    reset();
+    const pending = domConsentSurface({ ...request, timeoutMs });
+    await tick();
+    assert.match(find(dialogs[0], "mm-consent__expiry").textContent, expected, `${timeoutMs}ms`);
+    declineButton(dialogs[0]).click();
+    await pending;
+  }
+});
+
+// Two copies of this module on one page, or host markup using the same prefix,
+// must not produce duplicate ids for aria-labelledby to resolve ambiguously.
+test("each prompt labels itself with document-unique ids", async () => {
+  reset();
+  const first = domConsentSurface(request);
+  await tick();
+  declineButton(dialogs[0]).click();
+  await first;
+  const second = domConsentSurface(request);
+  await tick();
+  declineButton(dialogs[1]).click();
+  await second;
+  const [a, b] = dialogs.map((dialog) => find(dialog, "mm-consent__title").attributes.get("id"));
+  assert.notEqual(a, b);
+  assert.doesNotMatch(a, /^mm-consent-\d+-title$/, "ids must not be a guessable sequence");
+  assert.equal(dialogs[1].attributes.get("aria-labelledby"), b);
 });
 
 // An agent can open this dialog mid-keystroke. If Confirm held focus, the
