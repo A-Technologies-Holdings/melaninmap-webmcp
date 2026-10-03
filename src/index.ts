@@ -6,6 +6,7 @@ export {
   type ConsentResult,
   type ConsentSurface,
 } from "./consent.js";
+export { argsDigest } from "./digest.js";
 export {
   defineConsequentialTool,
   defineReadTool,

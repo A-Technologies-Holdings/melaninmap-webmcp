@@ -83,6 +83,11 @@
       "import": "./dist/react.js",
       "default": "./dist/react.js"
     },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js",
+      "default": "./dist/server.js"
+    },
     "./schemas/tools": "./schemas/melaninmap.tools.json",
     "./package.json": "./package.json"
   },
