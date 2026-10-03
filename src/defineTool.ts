@@ -60,6 +60,24 @@ const CANCELLED = {
   message: "The tool call was cancelled. Do not retry automatically.",
 };
 
+/**
+ * Read the host's execution options once, keeping only a real AbortSignal.
+ *
+ * The host is untyped in practice. `null`, `{}` or a signal-shaped object must
+ * not throw on the way in, and must not arm a listener that throws later from
+ * a timer, outside every try/catch in this file.
+ */
+function executionOptions(options: unknown): ToolExecutionOptions {
+  try {
+    const signal = (options as { signal?: unknown } | null | undefined)?.signal;
+    return typeof AbortSignal !== "undefined" && signal instanceof AbortSignal
+      ? { signal }
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 /** Enforce the deadline even when consumer code ignores its own timeout. */
 async function awaitConsent(
   surface: ConsentSurface,
@@ -192,7 +210,8 @@ export function defineReadTool<Args>(spec: ToolSpec<Args>): ModelContextTool {
     // tool kind win over spec.annotations so a read tool can never be marked
     // non-read-only (and, below, a consequential tool can never claim to be).
     annotations: { ...spec.annotations, readOnlyHint: true },
-    execute: async (raw, options = {}) => {
+    execute: async (raw, hostOptions) => {
+      const options = executionOptions(hostOptions);
       if (options.signal?.aborted) return toToolResult(CANCELLED);
       const args = safeParseArgs(spec.parseArgs, raw);
       if (args === null) return toToolResult(INVALID_ARGUMENTS);
@@ -284,7 +303,8 @@ export function defineConsequentialTool<Args>(
     description: spec.description,
     inputSchema: spec.inputSchema,
     annotations: { ...spec.annotations, readOnlyHint: false, consequentialHint: true },
-    execute: async (raw, options = {}) => {
+    execute: async (raw, hostOptions) => {
+      const options = executionOptions(hostOptions);
       if (options.signal?.aborted) return toToolResult(CANCELLED);
       const args = safeParseArgs(spec.parseArgs, raw);
       if (args === null) return toToolResult(INVALID_ARGUMENTS);

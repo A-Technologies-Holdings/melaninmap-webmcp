@@ -24,16 +24,15 @@ It is extracted from the pre-deployment agent layer prepared for
 handoffs disabled until the exact production path is deployed and verified
 with an approved Clarksville event or tour and its authority-backed Passport.
 
-## Use from source
-
-No npm-registry release is claimed yet. Install directly from the public
-repository, or clone it and run `npm run check` before linking it locally. The
-runtime has no dependencies; devDependencies are only for the build and the
-check suite.
+## Install
 
 ```bash
-npm install github:A-Technologies-Holdings/melaninmap-webmcp
+npm install @melaninmap/webmcp-consent
 ```
+
+The runtime has no dependencies; devDependencies are only for the build and the
+check suite. To work from source instead, clone the repository and run
+`npm run check` before linking it locally.
 
 ```ts
 import {
@@ -60,7 +59,7 @@ The package is **ESM-only**. There is no CommonJS build: a CommonJS consumer
 loads it with a dynamic `import()`. The runtime targets browsers; Node 22 or
 newer is needed only for the build and the check suite.
 
-Or skip the dependency entirely: it is about 380 lines of code (700 with the
+Or skip the dependency entirely: it is about 510 lines of code (840 with the
 comments that explain why) with nothing to configure, so copying `src/` into
 your project is a perfectly good answer.
 
@@ -131,7 +130,7 @@ fork. It follows the light/dark preference and honors reduced motion and forced
 colors.
 
 `registerAgentTools` is fully feature-detected. In any browser without either
-proposed registrar API it is a silent no-op that costs one property read. Load
+proposed registrar API it is a silent no-op that costs two property reads. Load
 it lazily after your app mounts: a registrar that can break the host page is
 worse than no registrar.
 
@@ -234,7 +233,7 @@ happens until you answer it. Decline, and the model is told you declined and
 told not to retry.
 
 In any other browser the registrar is a silent no-op — the site works normally
-and pays one property read for the feature detection.
+and pays two property reads for the feature detection.
 
 ## How it's built
 
@@ -268,7 +267,9 @@ The gate enforces the prompt deadline even if a custom consent surface never set
 Surfaces receive a separate cancellation signal to close their UI when the deadline
 or caller cancellation wins. A late confirmation cannot execute the action.
 The DOM example allows at most three active or queued prompts, and its timeout starts
-when the request enters the queue. Cancelled tool calls return `tool_cancelled`.
+when the request enters the queue. A call cancelled before its handler runs returns
+`tool_cancelled`, as does a handler that rejects after cancellation; a handler that
+completes anyway reports its real result.
 
 Registration bookkeeping is isolated by browser host and tool name. Overlapping
 scopes return `tool_conflict` before touching the host. Browser getter failures are
@@ -279,7 +280,8 @@ It waits for acceptance and reports partial failures without retrying rejected h
 `registerAgentTools` remains the synchronous compatibility API for older prototypes.
 
 To try the local consent playground, run `npm run build && npm run build:test`,
-then `python3 -m http.server 8080` from this repository. Open
+then `python3 -m http.server 8080` from a clone of this repository (the playground
+is not in the npm package). Open
 `http://localhost:8080/examples/playground.html`. Its counter is local to the page;
 it exercises human confirmation, five-second expiration, cancellation and the
 bounded queue without provider credentials.

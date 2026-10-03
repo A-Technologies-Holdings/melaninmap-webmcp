@@ -5,19 +5,6 @@ project follows the compatibility contract in [CONTRIBUTING.md](./CONTRIBUTING.m
 published tool names and schemas are stable surfaces and only change on a new
 versioned path.
 
-## Unreleased
-
-- Example consent surface redesign: structured markup with `mm-consent__*`
-  classes, a default stylesheet (`examples/consent-surface.css`) themed on
-  custom properties with light/dark, reduced-motion and forced-colors support,
-  an "Agent request" provenance label, and a written expiry plus a CSS
-  countdown meter driven by the request's own deadline. The dialog is now
-  labelled by its title and described by its detail and expiry text.
-  Behavior is unchanged: focus on Decline, untrusted Confirm clicks ignored,
-  dismissal never confirms.
-- Playground redesign: tool card, queue demonstration, and a log of the exact
-  result envelope each call returned.
-
 ## [1.0.0] - 2026-10-03
 
 First public release.
@@ -65,16 +52,32 @@ First public release.
   no longer claim tool code "cannot fabricate a confirmation".
 - The live-registrar parity check reads `WEBMCP_LIVE_REGISTRAR` instead of a
   hard-coded private monorepo path.
-- Public CI runs the full package gate and checks commit DCO trailers.
 - Reference consent and refusal behavior, schema drift, private parity
   configuration and DCO checks have executable regression coverage.
 - Consent deadlines are enforced by the library even when a custom surface
   never settles, and a late confirmation never runs the action.
 - Per-call cancellation (`options.signal`) reaches consent surfaces and
-  action handlers. A call cancelled before or during execution returns
-  `tool_cancelled`.
+  action handlers. A call cancelled before its handler runs returns
+  `tool_cancelled`, as does a handler that rejects after cancellation; a
+  handler that completes anyway reports its real result. Execution options
+  that are not a real `AbortSignal` (`null`, `{}`) are ignored rather than
+  thrown on.
 - `domConsentSurface` bounds its prompt queue, expires queued prompts from
   enqueue time, and frees a slot as soon as a request settles.
 - Registration state is isolated per browser host, overlapping tool names
   are rejected, and throwing browser feature getters fail closed.
 - CI runs on Buildkite (`Buildkite / WebMCP package`, `Buildkite / WebMCP DCO`).
+- The reference consent card and bridge bind every confirm, decline and
+  timeout to the request on screen, reject stale or synthetic Confirm clicks
+  before opening a tab, and report whether an answer was accepted.
+- Example consent surface redesign: structured markup with `mm-consent__*`
+  classes, a default stylesheet (`examples/consent-surface.css`) themed on
+  custom properties with light/dark, reduced-motion and forced-colors support,
+  an "Agent request" provenance label, and a written expiry plus a CSS
+  countdown meter driven by the request's own deadline. The dialog is now
+  labelled by its title and described by its detail and expiry text.
+  Behavior is unchanged: focus on Decline, untrusted Confirm clicks ignored,
+  dismissal never confirms.
+- Playground redesign: tool card, queue demonstration, and a log of the exact
+  result envelope each call returned.
+

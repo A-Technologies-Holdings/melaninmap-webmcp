@@ -26,15 +26,15 @@ green `main`. CI checks do not publish packages; releases remain manual.
    `schemas/`, `examples/`, `reference/`, and the docs, nothing else.
 5. Check `git status --porcelain` again, then `npm publish`.
    `prepublishOnly` reruns the gate; it does not enforce a clean checkout.
-6. `git tag v<version> && git push --tags`, then open a GitHub release
+6. `git tag v<version> && git push origin v<version>`, then open a GitHub release
    pointing at the CHANGELOG section.
 
 ## Provenance
 
 `npm publish --provenance` attests the tarball against the CI that built it,
 but provenance only works from a supported OIDC provider (GitHub Actions or
-GitLab CI). The public CI workflow is configured, but manual local publishing does not
-produce CI provenance. Use a supported OIDC publishing workflow before claiming
+GitLab CI). CI runs on Buildkite, which is not an npm provenance provider, and
+manual local publishing does not produce CI provenance. Use a supported OIDC publishing workflow before claiming
 provenance; ordinary CI success alone is insufficient.
 
 ## After publishing

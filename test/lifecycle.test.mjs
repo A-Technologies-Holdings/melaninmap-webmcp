@@ -46,3 +46,17 @@ test('an abort during execution reports tool_cancelled, not tool_unavailable',as
   const actPending=act.execute({}, {signal:actAc.signal});await running;actAc.abort();
   assert.equal(result(await actPending).code,'tool_cancelled');
 });
+// The host is untyped: null or a signal-shaped object must not throw on the
+// way in, nor arm a listener that throws later from the consent timer.
+test('non-AbortSignal execution options are ignored, never thrown on', async()=>{
+  const uncaught=[];const onUncaught=e=>uncaught.push(e);process.on('uncaughtException',onUncaught);
+  try{
+    const read=defineReadTool({name:'r',description:'r',inputSchema:{type:'object'},parseArgs:()=>({}),execute:async()=>({ok:true})});
+    assert.deepEqual(result(await read.execute({}, null)),{ok:true});
+    const tool=make({consent:()=>new Promise(()=>{})});
+    assert.equal(result(await tool.execute({}, null)).code,'consent_timeout');
+    assert.equal(result(await tool.execute({}, {signal:{}})).code,'consent_timeout');
+    await new Promise(r=>setTimeout(r,40));
+    assert.deepEqual(uncaught,[]);
+  }finally{process.off('uncaughtException',onUncaught);}
+});

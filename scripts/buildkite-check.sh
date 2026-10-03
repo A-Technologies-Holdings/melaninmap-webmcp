@@ -14,7 +14,7 @@ case "${1:-}" in
     fi
     base_branch="${BUILDKITE_PULL_REQUEST_BASE_BRANCH:?PR base branch required}"
     git check-ref-format "refs/heads/$base_branch"
-    git fetch origin "refs/heads/$base_branch:refs/remotes/origin/$base_branch"
+    git fetch origin "+refs/heads/$base_branch:refs/remotes/origin/$base_branch"
     export DCO_BASE
     DCO_BASE="$(git merge-base HEAD "refs/remotes/origin/$base_branch")"
     node scripts/check-dco.mjs
