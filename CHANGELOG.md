@@ -5,6 +5,19 @@ project follows the compatibility contract in [CONTRIBUTING.md](./CONTRIBUTING.m
 published tool names and schemas are stable surfaces and only change on a new
 versioned path.
 
+## Unreleased
+
+- Example consent surface redesign: structured markup with `mm-consent__*`
+  classes, a default stylesheet (`examples/consent-surface.css`) themed on
+  custom properties with light/dark, reduced-motion and forced-colors support,
+  an "Agent request" provenance label, and a written expiry plus a CSS
+  countdown meter driven by the request's own deadline. The dialog is now
+  labelled by its title and described by its detail and expiry text.
+  Behavior is unchanged: focus on Decline, untrusted Confirm clicks ignored,
+  dismissal never confirms.
+- Playground redesign: tool card, queue demonstration, and a log of the exact
+  result envelope each call returned.
+
 ## [1.0.0] - 2026-10-03
 
 First public release.

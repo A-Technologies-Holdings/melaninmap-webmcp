@@ -2,41 +2,180 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
 <title>WebMCP consent playground</title>
+<link rel="stylesheet" href="./consent-surface.css">
 <style>
-body { font: 16px system-ui; max-width: 48rem; margin: 3rem auto; padding: 1rem; }
-button { margin: .25rem; padding: .7rem; } dialog { max-width: 30rem; border-radius: .7rem; }
-pre { white-space: pre-wrap; padding: 1rem; background: #eee; color: #222; }
+:root {
+  --bg: #0d0907; --panel: #17110d; --line: rgb(201 150 59 / 0.18);
+  --text: #f3e9dc; --muted: #b8a08a; --accent: #c9963b; --on-accent: #0d0907;
+  --ok: #7fbf8e; --warn: #e0b45c; --stop: #e08a7a;
+  font: 400 1rem/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--text); background: var(--bg);
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f7f1e8; --panel: #fffaf3; --line: rgb(139 101 40 / 0.2);
+    --text: #24180f; --muted: #6b5640; --accent: #8a5f14; --on-accent: #fffaf3;
+    --ok: #2f7a45; --warn: #8a5f14; --stop: #a33a28;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { width: min(60rem, 100% - 2rem); margin: 0 auto; padding: 3rem 0 4rem; }
+h1, h2, p { margin: 0; }
+code { font: 0.875em/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+.hero { display: grid; gap: 0.75rem; margin-bottom: 2rem; }
+.kicker { color: var(--accent); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+.hero h1 { font-size: clamp(1.75rem, 4vw, 2.5rem); line-height: 1.15; text-wrap: balance; }
+.hero p { max-width: 42rem; color: var(--muted); }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 1rem; }
+@media (max-width: 48rem) { .grid { grid-template-columns: 1fr; } }
+.panel { padding: 1.25rem; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); }
+.panel h2 { margin-bottom: 0.75rem; color: var(--muted); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.stack { display: grid; gap: 1rem; align-content: start; }
+
+.tool { display: grid; gap: 0.5rem; }
+.tool code { color: var(--accent); font-size: 1rem; }
+.tool p { color: var(--muted); font-size: 0.9375rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0; margin: 0.25rem 0 0; list-style: none; }
+.chip { padding: 0.125rem 0.625rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 0.8125rem; }
+.chip[data-tone="ok"] { color: var(--ok); }
+.chip[data-tone="warn"] { color: var(--warn); }
+
+.controls { display: grid; gap: 0.75rem; }
+.controls button { min-height: 2.75rem; padding: 0.625rem 1rem; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--text); font-family: inherit; font-size: 0.9375rem; font-weight: 600; line-height: 1.2; cursor: pointer; }
+.controls button.primary { border-color: transparent; background: var(--accent); color: var(--on-accent); }
+.controls button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.hint { color: var(--muted); font-size: 0.8125rem; }
+
+.counter { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.counter output { font-size: 2.5rem; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1; }
+
+.log { display: grid; gap: 0.5rem; max-height: 26rem; overflow: auto; padding: 0; margin: 0; list-style: none; }
+.log li { display: grid; grid-template-columns: auto 1fr auto; gap: 0.25rem 0.75rem; align-items: baseline; padding: 0.75rem; border: 1px solid var(--line); border-radius: 12px; }
+.log .outcome { font-weight: 600; }
+.log .outcome[data-tone="ok"] { color: var(--ok); }
+.log .outcome[data-tone="warn"] { color: var(--warn); }
+.log .outcome[data-tone="stop"] { color: var(--stop); }
+.log time { color: var(--muted); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.log pre { grid-column: 1 / -1; margin: 0; padding: 0.5rem 0.75rem; overflow-x: auto; border-radius: 8px; background: var(--bg); color: var(--muted); font: 0.8125rem/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+.empty { color: var(--muted); font-size: 0.9375rem; }
 </style>
-<h1>Consent playground</h1>
-<p>This local demonstration changes only a counter on this page. Read the prompt, decline it, let it expire, or cancel the invocation. A browser with WebMCP support can also discover the demonstration tool.</p>
-<button id="start">Request counter update</button>
-<button id="cancel">Request and cancel after one second</button>
-<p>Confirmed updates: <output id="count">0</output></p>
-<pre id="result" aria-live="polite">Ready. Consent expires after five seconds, including queue time.</pre>
+
+<main>
+  <header class="hero">
+    <p class="kicker">@melaninmap/webmcp-consent</p>
+    <h1>Consent playground</h1>
+    <p>An agent asks; a person decides. The demonstration tool below changes only a counter on this page. Confirm it, decline it, press Escape, let it expire, or cancel the call mid-prompt, and watch the result envelope the agent receives.</p>
+  </header>
+
+  <div class="grid">
+    <div class="stack">
+      <section class="panel tool" aria-labelledby="tool-heading">
+        <h2 id="tool-heading">Tool</h2>
+        <code>demo_counter_update</code>
+        <p>Adds one to the counter after a person confirms in the page. No network, no external action.</p>
+        <ul class="chips">
+          <li class="chip" data-tone="warn">Consequential</li>
+          <li class="chip">Consent expires in 5s</li>
+          <li class="chip" id="registration">Checking browser…</li>
+        </ul>
+      </section>
+
+      <section class="panel controls" aria-labelledby="try-heading">
+        <h2 id="try-heading">Try it</h2>
+        <button id="start" class="primary" type="button">Request counter update</button>
+        <button id="burst" type="button">Fire three requests at once</button>
+        <button id="cancel" type="button">Request, then cancel after 1s</button>
+        <p class="hint">Three at once shows queuing: one dialog at a time, never a stack. The five-second deadline includes time spent in the queue.</p>
+      </section>
+
+      <section class="panel counter" aria-labelledby="count-heading">
+        <h2 id="count-heading">Confirmed updates</h2>
+        <output id="count" aria-live="polite">0</output>
+      </section>
+    </div>
+
+    <section class="panel" aria-labelledby="log-heading">
+      <h2 id="log-heading">What the agent received</h2>
+      <p class="empty" id="empty">No calls yet. Request an update to see its result here.</p>
+      <ol class="log" id="log" aria-live="polite"></ol>
+    </section>
+  </div>
+</main>
+
 <script type="module">
 import { defineConsequentialTool, registerAgentToolsAsync } from '../dist/index.js';
 import { domConsentSurface } from '../.test-build/examples/domConsentSurface.js';
-const result = document.getElementById('result');
-const controllers = new Set();
+
+const log = document.getElementById('log');
+const empty = document.getElementById('empty');
+const countOut = document.getElementById('count');
 let count = 0;
+let calls = 0;
+
 const tool = defineConsequentialTool({
-  name: 'demo_counter_update', description: 'Update the demonstration counter after a person confirms in the page. No external action.',
+  name: 'demo_counter_update',
+  description: 'Update the demonstration counter after a person confirms in the page. No external action.',
   inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   parseArgs: args => args && Object.keys(args).length === 0 ? {} : null,
   consent: domConsentSurface,
-  describeConsent: () => ({title:'Add one to the demonstration counter?',detail:'Only this local page changes. The request expires in five seconds.',confirmLabel:'Add one',timeoutMs:5000}),
-  execute: async () => { count += 1; document.getElementById('count').textContent = String(count); return {ok:true,count}; },
+  describeConsent: () => ({
+    title: 'Add one to the demonstration counter?',
+    detail: 'Only this local page changes. Nothing is sent anywhere.',
+    confirmLabel: 'Add one',
+    timeoutMs: 5000,
+  }),
+  execute: async () => { count += 1; countOut.textContent = String(count); return { ok: true, count }; },
 });
-async function run(cancelAfterMs) {
-  const controller = new AbortController(); controllers.add(controller);
-  const timer = cancelAfterMs ? setTimeout(() => controller.abort(), cancelAfterMs) : undefined;
-  try { result.textContent = JSON.stringify(await tool.execute({}, {signal:controller.signal}), null, 2); }
-  finally { clearTimeout(timer); controllers.delete(controller); }
+
+// Name each envelope the way a person would describe what happened.
+function describe(envelope) {
+  if (envelope?.ok) return ['Confirmed', 'ok'];
+  const labels = {
+    consent_declined: ['Declined', 'stop'],
+    consent_closed: ['Dismissed', 'stop'],
+    consent_timeout: ['Expired', 'warn'],
+    tool_cancelled: ['Cancelled', 'warn'],
+  };
+  return labels[envelope?.code] ?? [envelope?.code ?? 'Unknown', 'warn'];
 }
+
+function record(n, envelope) {
+  const [label, tone] = describe(envelope);
+  const item = document.createElement('li');
+  const outcome = Object.assign(document.createElement('span'), { className: 'outcome', textContent: label });
+  outcome.dataset.tone = tone;
+  const which = Object.assign(document.createElement('span'), { textContent: `Call ${n}` });
+  const time = Object.assign(document.createElement('time'), { textContent: new Date().toLocaleTimeString() });
+  const body = Object.assign(document.createElement('pre'), { textContent: JSON.stringify(envelope, null, 2) });
+  item.append(outcome, which, time, body);
+  empty.hidden = true;
+  log.prepend(item);
+}
+
+async function run(cancelAfterMs) {
+  const n = ++calls;
+  const controller = new AbortController();
+  const timer = cancelAfterMs ? setTimeout(() => controller.abort(), cancelAfterMs) : undefined;
+  try {
+    const result = await tool.execute({}, { signal: controller.signal });
+    record(n, JSON.parse(result.content[0].text));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 document.getElementById('start').addEventListener('click', () => run());
+document.getElementById('burst').addEventListener('click', () => { run(); run(); run(); });
 document.getElementById('cancel').addEventListener('click', () => run(1000));
+
+const registration = document.getElementById('registration');
 const registered = await registerAgentToolsAsync([tool]);
-if (!registered.registered) result.textContent += '\nBrowser registration: ' + registered.reason + '. Page controls still work.';
+registration.textContent = registered.registered ? 'Registered with this browser' : `Page-only: ${registered.reason}`;
+registration.dataset.tone = registered.registered ? 'ok' : '';
 </script>
 </html>

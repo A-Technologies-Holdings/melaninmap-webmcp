@@ -125,9 +125,18 @@ function reset() {
 // on a microtask, not synchronously with the call.
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-// children arrive in append order: title, detail, confirm, decline.
-const confirmButton = (dialog) => dialog.children[2];
-const declineButton = (dialog) => dialog.children[3];
+// Find by role class, not by position, so layout changes do not break tests.
+function find(node, className) {
+  for (const child of node.children) {
+    const classes = (child.attributes.get("class") ?? "").split(" ");
+    if (classes.includes(className)) return child;
+    const nested = find(child, className);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+const confirmButton = (dialog) => find(dialog, "mm-consent__button--confirm");
+const declineButton = (dialog) => find(dialog, "mm-consent__button--decline");
 
 test("mounts a modal dialog carrying the request's words", async () => {
   reset();
@@ -136,9 +145,32 @@ test("mounts a modal dialog carrying the request's words", async () => {
   assert.equal(dialogs.length, 1);
   const dialog = dialogs[0];
   assert.equal(dialog.open, true);
-  assert.equal(dialog.children[0].textContent, request.title);
-  assert.equal(dialog.children[1].textContent, request.detail);
+  assert.equal(find(dialog, "mm-consent__title").textContent, request.title);
+  assert.equal(find(dialog, "mm-consent__detail").textContent, request.detail);
   assert.equal(confirmButton(dialog).textContent, request.confirmLabel);
+  declineButton(dialog).click();
+  return pending;
+});
+
+// The dialog is named by its title and described by the detail and the
+// expiry line, so a screen reader announces what is asked and for how long.
+test("the dialog is labelled by its title and says when it expires", async () => {
+  reset();
+  const pending = domConsentSurface({ ...request, timeoutMs: 5000 });
+  await tick();
+  const dialog = dialogs[0];
+  const title = find(dialog, "mm-consent__title");
+  const expiry = find(dialog, "mm-consent__expiry");
+  assert.equal(dialog.attributes.get("aria-labelledby"), title.attributes.get("id"));
+  assert.ok(
+    dialog.attributes.get("aria-describedby").split(" ").includes(expiry.attributes.get("id")),
+  );
+  assert.match(expiry.textContent, /^Expires in 5 seconds\./);
+  assert.match(expiry.textContent, /Open tickets/);
+  assert.equal(
+    find(dialog, "mm-consent__meter-fill").attributes.get("style"),
+    "--mm-consent-duration: 5000ms",
+  );
   declineButton(dialog).click();
   return pending;
 });

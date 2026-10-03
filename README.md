@@ -123,6 +123,13 @@ const handoff = defineConsequentialTool({
 await registerAgentToolsAsync([search, handoff]);
 ```
 
+The example surface ships with a default look in
+[`examples/consent-surface.css`](./examples/consent-surface.css): load it once per
+page. Every element carries an `mm-consent__*` class and every color, radius and
+font is a custom property on `.mm-consent`, so rebranding is an override, not a
+fork. It follows the light/dark preference and honors reduced motion and forced
+colors.
+
 `registerAgentTools` is fully feature-detected. In any browser without either
 proposed registrar API it is a silent no-op that costs one property read. Load
 it lazily after your app mounts: a registrar that can break the host page is
