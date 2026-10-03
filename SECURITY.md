@@ -109,7 +109,8 @@ exchange so you do not have to write it. Be exact about what you get.
 
 A proof that passes `verifyConsentProof` proves that **your consent endpoint
 issued it, within its lifetime, for this tool, these exact arguments and this
-audience, and that it had not been used before.** That is worth having:
+audience (and subject, if you bind one), and that it had not been used
+before.** That is worth having:
 
 - the action endpoint stops accepting a bare "consent: yes" field, which
   closes the direct-writer bypass;
@@ -127,15 +128,25 @@ consent field.
 
 What the helpers cannot do for you:
 
+- **The consent endpoint is the control.** It receives the tool name and the
+  exact arguments. Allowlist the tools it will sign for, cap the arguments,
+  check the session, rate limit it. An endpoint that signs whatever it is sent
+  is a bare consent field with extra steps.
 - **Single use is your storage.** `consume(nonce, expiresAt)` is required and
   must insert-if-absent atomically. A read-then-write two requests can
-  interleave accepts a proof twice. Keep the record until `expiresAt`.
-- **The secret stays on the server.** At least 32 random bytes. A secret in a
-  browser bundle lets anyone mint proofs. Use a distinct `audience` per
-  endpoint and per environment so a staging proof is worthless in production,
-  even if someone reuses a secret.
-- **Recompute the digest on the server** from the arguments the action
-  endpoint is about to act on. Never take the digest from the client.
+  interleave accepts a proof twice. Keep the record at least until
+  `expiresAt`; it already includes margin for skew between verifiers.
+- **Without a subject, a proof is a bearer token.** One leaked from user A can
+  be spent by user B for the same operation, once. Pass the session or account
+  id as `subject` on both sides when the action is per-user.
+- **The secret stays on the server and does one job.** At least 32 random
+  bytes, used for nothing but consent proofs (rotate by passing a short list
+  to `verifyConsentProof`). A secret in a browser bundle lets anyone mint
+  proofs. Use a distinct `audience` per endpoint and per environment so a
+  staging proof is worthless in production.
+- **Digest on the server.** Pass `args` to both `signConsentProof` and
+  `verifyConsentProof` and let them compute the digest. Never take a digest
+  from the client.
 - **Do not echo the failure reason.** Log it; answer the client with one
   undifferentiated 403.
 - **Everything in "Put the security boundary where the server can verify

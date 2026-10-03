@@ -100,3 +100,22 @@ test("rejects a missing or empty tool name", async () => {
 test("a rejection names the offending path", async () => {
   await assert.rejects(argsDigest("t", { a: [{ b: NaN }] }), /args\.a\[0\]\.b/);
 });
+
+// RFC 8785 serializes numbers exactly as ECMAScript does. A few of its
+// boundary cases, pinned so a refactor cannot drift from JCS.
+test("numbers serialize as RFC 8785 / ECMAScript does", async () => {
+  const cases = [
+    [1e21, "1e+21"], [1e20, "100000000000000000000"], [0.000001, "0.000001"], [1e-7, "1e-7"],
+    [-0, "0"], [5e-324, "5e-324"], [1.7976931348623157e308, "1.7976931348623157e+308"],
+    [9007199254740993, "9007199254740992"], [0.1 + 0.2, "0.30000000000000004"], [-1.5, "-1.5"],
+  ];
+  for (const [value, text] of cases) {
+    assert.equal(await argsDigest("t", { n: value }), sha256(`["webmcp-consent/args/v1","t",{"n":${text}}]`), text);
+  }
+});
+
+test("a __proto__ key is data, digested like any other key", async () => {
+  const args = JSON.parse('{"__proto__":{"polluted":true},"a":1}');
+  assert.equal(await argsDigest("t", args), sha256('["webmcp-consent/args/v1","t",{"__proto__":{"polluted":true},"a":1}]'));
+  assert.equal({}.polluted, undefined);
+});

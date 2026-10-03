@@ -16,11 +16,20 @@
  * - object keys sorted by UTF-16 code units (JavaScript's default sort);
  * - no whitespace; strings and numbers exactly as `JSON.stringify` writes them;
  * - only JSON values: plain objects, arrays, strings, finite numbers,
- *   booleans and null. Anything else — `undefined` (including as a property
- *   value), functions, symbols, bigints, `NaN`/`Infinity`, `Date`, `Map`,
- *   class instances, sparse arrays, cycles, strings with lone surrogates — is
- *   rejected rather than silently coerced, because a value two sides would
- *   coerce differently is a binding that quietly does not bind.
+ *   booleans and null. Values that have no JSON form — `undefined`
+ *   (including as a property value), functions, symbols, bigints,
+ *   `NaN`/`Infinity`, `Date`, `Map`, class instances, sparse arrays, cycles,
+ *   strings with lone surrogates — are rejected, because a value two sides
+ *   would coerce differently is a binding that quietly does not bind.
+ *
+ * What it does NOT do, so you are not surprised: like `JSON.stringify` it
+ * reads only own enumerable string keys (symbol and non-enumerable keys are
+ * ignored), calls getters, never calls `toJSON`, and writes `-0` as `0`.
+ * "Plain" is judged by prototype, so a plain object from another realm (an
+ * iframe) is rejected, and a Proxy is judged by what its traps report.
+ * Numbers must fit in a double: an integer past 2^53 is already rounded
+ * before it gets here, on both sides, and differently by different parsers —
+ * send large ids as strings.
  *
  * That is intended to be RFC 8785 (JCS) output for every value accepted, so
  * a server in another language can reproduce it with a JCS library. The
@@ -109,16 +118,30 @@ function hex(bytes: ArrayBuffer): string {
  *
  * Rejects with a `TypeError` naming the offending path when `args` holds
  * anything that is not a JSON value, or when `toolName` is not a non-empty
- * string, and with whatever WebCrypto throws if it is unavailable (an
- * insecure context). It never coerces.
+ * string, and with a `TypeError` if WebCrypto is unavailable (an insecure
+ * context).
  */
 export async function argsDigest(toolName: string, args: unknown): Promise<string> {
+  return digestCanonical(toolName, canonicalArgs(args));
+}
+
+/**
+ * The canonical JSON text of `args`, synchronously. Throws a `TypeError`
+ * naming the offending path. Internal: the gate uses it to snapshot
+ * arguments before it prompts anyone.
+ */
+export function canonicalArgs(args: unknown): string {
+  return canonical(args, "args", 1, new Set());
+}
+
+/** SHA-256 hex of the preimage for already-canonical args text. Internal. */
+export async function digestCanonical(toolName: string, canonicalArgsText: string): Promise<string> {
   if (typeof toolName !== "string" || toolName.length === 0) {
     throw new TypeError("argsDigest: toolName must be a non-empty string");
   }
   // The same bytes as canonical([DIGEST_DOMAIN, toolName, args]); built by
   // hand so a rejection names `args.path`, not `$[2].path`.
-  const preimage = `[${JSON.stringify(DIGEST_DOMAIN)},${canonical(toolName, "toolName", 0, new Set())},${canonical(args, "args", 1, new Set())}]`;
+  const preimage = `[${JSON.stringify(DIGEST_DOMAIN)},${canonical(toolName, "toolName", 0, new Set())},${canonicalArgsText}]`;
   const subtle = globalThis.crypto?.subtle;
   if (subtle === undefined) throw new TypeError("argsDigest: WebCrypto (crypto.subtle) is unavailable");
   return hex(await subtle.digest("SHA-256", new TextEncoder().encode(preimage)));

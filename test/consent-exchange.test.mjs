@@ -47,12 +47,17 @@ test("the exchange runs after confirmation and its proof reaches execute", async
   assert.deepEqual(json(await definition.execute(call)), { ok: true });
   assert.equal(seen.length, 1);
   const [request] = seen;
-  assert.deepEqual(Object.keys(request).sort(), ["argsDigest", "auditToken", "signal", "toolName"]);
+  assert.deepEqual(Object.keys(request).sort(), ["args", "argsDigest", "auditToken", "signal", "toolName"]);
   assert.equal(request.toolName, "hold_tickets");
+  // The parsed arguments, as a frozen JSON snapshot: the consent endpoint
+  // gets the operation itself, not just an opaque hash.
+  assert.deepEqual(request.args, { eventId: "evt_1", quantity: 2 });
+  assert.ok(Object.isFrozen(request.args));
   assert.equal(request.argsDigest, await argsDigest("hold_tickets", { eventId: "evt_1", quantity: 2 }));
   assert.equal(request.auditToken, "audit-1");
   assert.ok(request.signal instanceof AbortSignal);
   assert.equal(runs.length, 1);
+  assert.equal(runs[0].args, request.args, "execute receives the very snapshot that was bound");
   assert.deepEqual(runs[0].consent, { decision: "confirmed", auditToken: "audit-1", proof: "proof-123" });
   assert.deepEqual(decisions, ["confirmed"]);
 });
@@ -93,7 +98,13 @@ for (const [label, exchangeConsent] of [
   ["resolves an empty string", async () => ""],
   ["resolves a number", async () => 42],
   ["resolves an object", async () => ({ proof: "p" })],
-  ["is not a function", "proof-please"],
+  ["resolves a String object", async () => new String("p")],
+  ["returns a thenable whose then throws", () => ({ then() { throw new Error("x"); } })],
+  ["returns a promise whose constructor getter throws", () => {
+    const promise = Promise.resolve("p");
+    Object.defineProperty(promise, "constructor", { get() { throw new Error("ctor"); } });
+    return promise;
+  }],
 ]) {
   test(`an exchange that ${label} fails closed as consent_unverified`, async () => {
     const { definition, runs, decisions } = tool({ exchangeConsent });
@@ -107,15 +118,102 @@ for (const [label, exchangeConsent] of [
   });
 }
 
-test("arguments that cannot be digested fail closed without calling the exchange", async () => {
-  let exchanges = 0;
-  const { definition, runs } = tool({
-    parseArgs: () => ({ when: new Date(0) }),
-    exchangeConsent: async () => { exchanges += 1; return "p"; },
+test("an exchange that is not a function fails closed before anyone is asked", async () => {
+  let prompts = 0;
+  const { definition, runs, decisions } = tool({
+    consent: async () => { prompts += 1; return { decision: "confirmed" }; },
+    exchangeConsent: "proof-please",
   });
-  assert.equal(json(await definition.execute(call)).code, "consent_unverified");
-  assert.equal(exchanges, 0);
+  const result = json(await definition.execute(call));
+  assert.equal(result.code, "consent_unverified");
+  assert.match(result.message, /was not asked/);
+  assert.equal(prompts, 0);
   assert.equal(runs.length, 0);
+  assert.deepEqual(decisions, [], "no decision was reached");
+});
+
+// Digest first, prompt second: a person must never confirm a call that can
+// never be verified.
+for (const [label, parseArgs] of [
+  ["a Date", () => ({ when: new Date(0) })],
+  ["undefined", () => undefined],
+  ["NaN", () => ({ n: NaN })],
+]) {
+  test(`arguments holding ${label} are invalid_arguments, and nobody is prompted`, async () => {
+    let prompts = 0;
+    let exchanges = 0;
+    const { definition, runs } = tool({
+      parseArgs,
+      consent: async () => { prompts += 1; return { decision: "confirmed" }; },
+      exchangeConsent: async () => { exchanges += 1; return "p"; },
+    });
+    assert.equal(json(await definition.execute(call)).code, "invalid_arguments");
+    assert.equal(prompts, 0);
+    assert.equal(exchanges, 0);
+    assert.equal(runs.length, 0);
+  });
+}
+
+test("a tool with no arguments works with an exchange when parseArgs returns {}", async () => {
+  const seen = [];
+  const { definition, runs } = tool({
+    parseArgs: () => ({}),
+    exchangeConsent: (request) => { seen.push(request); return "p"; },
+  });
+  assert.deepEqual(json(await definition.execute({})), { ok: true });
+  assert.equal(seen[0].argsDigest, await argsDigest("hold_tickets", {}));
+  assert.equal(runs.length, 1);
+});
+
+// The arguments are pinned before the prompt. Nothing that runs afterwards —
+// describeConsent, a getter, the exchange itself — can change what the
+// person saw into something else that gets bound and executed.
+test("what the person saw is what gets bound and executed", async () => {
+  const parsed = { eventId: "evt_1", quantity: 2 };
+  let reads = 0;
+  const shown = [];
+  const seen = [];
+  const { definition, runs } = tool({
+    parseArgs: () => parsed,
+    describeConsent: (args) => {
+      shown.push(args.quantity);
+      parsed.quantity = 200; // mutate the original after it was pinned
+      try { args.quantity = 300; } catch { /* the snapshot is frozen */ }
+      return prompt;
+    },
+    exchangeConsent: (request) => { seen.push(request.args.quantity); return "p"; },
+  });
+  await definition.execute(call);
+  assert.deepEqual(shown, [2]);
+  assert.deepEqual(seen, [2]);
+  assert.equal(runs[0].args.quantity, 2);
+  assert.equal(runs[0].consent.proof, "p");
+
+  const withGetter = tool({
+    parseArgs: () => ({ get quantity() { reads += 1; return reads === 1 ? 2 : 200; } }),
+    describeConsent: (args) => { shown.push(args.quantity); return prompt; },
+    exchangeConsent: (request) => { seen.push(request.args.quantity); return "p"; },
+  });
+  await withGetter.definition.execute(call);
+  assert.equal(reads, 1, "the getter is read once, when pinned");
+  assert.deepEqual(shown, [2, 2]);
+  assert.deepEqual(seen, [2, 2]);
+  assert.equal(withGetter.runs[0].args.quantity, 2);
+});
+
+test("a cancellation that lands after the proof but before execute cancels", async () => {
+  const controller = new AbortController();
+  const { definition, runs, decisions } = tool({
+    exchangeConsent: (request) => {
+      // The gate aborts the exchange's own signal once it has the answer;
+      // cancel the host call at exactly that moment.
+      request.signal.addEventListener("abort", () => controller.abort());
+      return "proof-in-hand";
+    },
+  });
+  assert.equal(json(await definition.execute(call, { signal: controller.signal })).code, "tool_cancelled");
+  assert.equal(runs.length, 0);
+  assert.deepEqual(decisions, ["cancelled"]);
 });
 
 test("the host cancelling during the exchange cancels the call and aborts the exchange", async () => {
@@ -168,13 +266,15 @@ test("end to end: exchange, execute, verify; a swapped argument does not verify"
   const audience = "https://api.example.test/hold";
   const used = new Set();
   const consume = async (nonce) => (used.has(nonce) ? false : (used.add(nonce), true));
-  // The consent endpoint: your checks go here, then mint.
-  const consentEndpoint = async ({ toolName, argsDigest: digest }) =>
-    signConsentProof({ secret, toolName, argsDigest: digest, audience, ttlMs: 30_000 });
-  // The action endpoint: recompute the digest from what it is about to do.
+  // The consent endpoint: your checks go here — which tools may be
+  // exchanged, ceilings on the arguments — then mint from the args.
+  const consentEndpoint = async ({ toolName, args }) => {
+    if (toolName !== "hold_tickets" || !(args.quantity >= 1 && args.quantity <= 8)) throw new Error("403");
+    return signConsentProof({ secret, toolName, args, audience, ttlMs: 30_000 });
+  };
+  // The action endpoint: verify against the args it is about to act on.
   const actionEndpoint = async (body) => verifyConsentProof({
-    secret, audience, consume, proof: body.proof, toolName: "hold_tickets",
-    argsDigest: await argsDigest("hold_tickets", body.args),
+    secret, audience, consume, proof: body.proof, toolName: "hold_tickets", args: body.args,
   });
   const responses = [];
   const { definition } = tool({

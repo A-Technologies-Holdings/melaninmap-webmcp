@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   CONSENT_PROOF_CLOCK_SKEW_MS,
+  CONSENT_PROOF_MAX_LENGTH,
   CONSENT_PROOF_MAX_TTL_MS,
   argsDigest,
   signConsentProof,
@@ -49,7 +50,8 @@ const verify = (proof, overrides = {}) =>
 const b64url = (bytes) => Buffer.from(bytes).toString("base64url");
 async function hmac(key, text) {
   const imported = await crypto.subtle.importKey("raw", new TextEncoder().encode(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return new Uint8Array(await crypto.subtle.sign("HMAC", imported, new TextEncoder().encode(text)));
+  // The documented MAC input: a fixed context, then "v1.<payload>".
+  return new Uint8Array(await crypto.subtle.sign("HMAC", imported, new TextEncoder().encode(`webmcp-consent/proof/${text}`)));
 }
 /** A correctly MAC'd proof over any payload text: proves payload checks run AFTER the MAC, and still hold. */
 async function forgeWithSecret(payloadText) {
@@ -63,15 +65,15 @@ test("a valid proof verifies once and reports what it binds", async () => {
   const store = ledger();
   const result = await verify(proof, { consume: store.consume });
   assert.equal(result.ok, true);
-  assert.deepEqual(Object.keys(result.proof).sort(), ["argsDigest", "audience", "expiresAt", "issuedAt", "nonce", "toolName"]);
-  assert.equal(result.proof.toolName, toolName);
-  assert.equal(result.proof.argsDigest, digest);
-  assert.equal(result.proof.audience, audience);
-  assert.equal(result.proof.issuedAt, T0);
-  assert.equal(result.proof.expiresAt, T0 + 60_000);
-  // consume sees the nonce, and how long it must remember it: until the
-  // proof could no longer verify anyway.
-  assert.deepEqual(store.calls, [[result.proof.nonce, T0 + 60_000 + CONSENT_PROOF_CLOCK_SKEW_MS]]);
+  assert.deepEqual(Object.keys(result.claims).sort(), ["argsDigest", "audience", "expiresAt", "issuedAt", "nonce", "toolName"]);
+  assert.equal(result.claims.toolName, toolName);
+  assert.equal(result.claims.argsDigest, digest);
+  assert.equal(result.claims.audience, audience);
+  assert.equal(result.claims.issuedAt, T0);
+  assert.equal(result.claims.expiresAt, T0 + 60_000);
+  // consume sees the nonce, and how long it must remember it at least: past
+  // the last moment any verifier, skewed either way, would accept it.
+  assert.deepEqual(store.calls, [[result.claims.nonce, T0 + 60_000 + 2 * CONSENT_PROOF_CLOCK_SKEW_MS]]);
 });
 
 test("the proof is v1.<payload>.<mac>, carries a digest and never the arguments", async () => {
@@ -299,4 +301,83 @@ test("the server entry imports nothing outside the package", () => {
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(pkg.exports["./server"].import, "./dist/server.js");
   assert.equal(pkg.exports["./server"].types, "./dist/server.d.ts");
+});
+
+// --- binding by args, subject, rotation, length --------------------------
+
+const callArgs = { eventId: "evt_1", quantity: 2 };
+
+test("args can be passed instead of a digest, on both sides", async () => {
+  const proof = await sign({ argsDigest: undefined, args: callArgs });
+  assert.equal(decodePayload(proof).args, digest, "the same digest either way");
+  assert.equal((await verify(proof, { argsDigest: undefined, args: { quantity: 2, eventId: "evt_1" } })).ok, true);
+  assert.deepEqual(await verify(proof, { argsDigest: undefined, args: { ...callArgs, quantity: 200 } }), { ok: false, reason: "wrong_args" });
+});
+
+test("a request whose args cannot be digested is malformed, not a crash", async () => {
+  const proof = await sign();
+  let deep = {};
+  for (let i = 0; i < 100; i += 1) deep = { deep };
+  for (const [label, args] of [["missing", undefined], ["a Date", { d: new Date(0) }], ["absurd nesting", deep]]) {
+    const store = ledger();
+    assert.deepEqual(await verify(proof, { argsDigest: undefined, args, consume: store.consume }), { ok: false, reason: "malformed" }, label);
+    assert.deepEqual(store.calls, [], label);
+  }
+});
+
+test("exactly one of args or argsDigest", async () => {
+  const proof = await sign();
+  assert.deepEqual(await verify(proof, { args: callArgs }), { ok: false, reason: "misconfigured" }, "both");
+  assert.deepEqual(await verify(proof, { argsDigest: undefined }), { ok: false, reason: "misconfigured" }, "neither");
+  await assert.rejects(sign({ args: callArgs }), TypeError);
+  await assert.rejects(sign({ argsDigest: undefined }), TypeError);
+  await assert.rejects(sign({ argsDigest: undefined, args: { d: new Date(0) } }), TypeError);
+});
+
+test("a subject binds the proof to one session, in both directions", async () => {
+  const proof = await sign({ subject: "session-a" });
+  assert.equal(decodePayload(proof).sub, "session-a");
+  const store = ledger();
+  assert.deepEqual(await verify(proof, { subject: "session-b", consume: store.consume }), { ok: false, reason: "wrong_subject" });
+  assert.deepEqual(await verify(proof, { consume: store.consume }), { ok: false, reason: "wrong_subject" }, "a subject proof is not a bearer token");
+  assert.deepEqual(store.calls, []);
+  const ok = await verify(proof, { subject: "session-a", consume: store.consume });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.claims.subject, "session-a");
+  assert.deepEqual(await verify(await sign(), { subject: "session-a" }), { ok: false, reason: "wrong_subject" }, "nor the other way round");
+  await assert.rejects(sign({ subject: "" }), TypeError);
+});
+
+test("rotation: verification accepts any of a short list of secrets", async () => {
+  const old = await sign({ secret: otherSecret });
+  const current = await sign();
+  assert.equal((await verify(old, { secret: [secret, otherSecret] })).ok, true);
+  assert.equal((await verify(current, { secret: [secret, otherSecret] })).ok, true);
+  assert.deepEqual(await verify(old, { secret: [secret] }), { ok: false, reason: "bad_signature" });
+  assert.deepEqual(await verify(current, { secret: [] }), { ok: false, reason: "misconfigured" });
+  assert.deepEqual(await verify(current, { secret: [secret, "short"] }), { ok: false, reason: "misconfigured" });
+  assert.deepEqual(await verify(current, { secret: Array(5).fill(secret) }), { ok: false, reason: "misconfigured" });
+});
+
+test("signing refuses what verification would refuse as too long", async () => {
+  await assert.rejects(sign({ audience: "https://example.test/" + "a".repeat(1400) }), /over 2048/);
+  await assert.rejects(sign({ toolName: "名".repeat(450), argsDigest: await argsDigest("名".repeat(450), {}) }), /over 2048/);
+  const longest = await sign({ audience: "https://example.test/" + "a".repeat(1000) });
+  assert.ok(longest.length <= CONSENT_PROOF_MAX_LENGTH);
+  assert.equal((await verify(longest, { audience: "https://example.test/" + "a".repeat(1000) })).ok, true);
+});
+
+test("a clock that would overflow cannot sign", async () => {
+  await assert.rejects(sign({ now: Number.MAX_SAFE_INTEGER - 10 }), TypeError);
+});
+
+test("an audience or tool name containing dots or unicode round-trips", async () => {
+  const odd = { audience: "https://a.b.c/ü.v1.x", toolName: "tool.with.dots", argsDigest: await argsDigest("tool.with.dots", {}) };
+  assert.equal((await verify(await sign(odd), odd)).ok, true);
+});
+
+test("a string secret with a lone surrogate is refused", async () => {
+  const broken = "\uD800" + "x".repeat(40);
+  await assert.rejects(sign({ secret: broken }), TypeError);
+  assert.deepEqual(await verify(await sign(), { secret: broken }), { ok: false, reason: "misconfigured" });
 });

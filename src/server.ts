@@ -8,22 +8,23 @@
  *
  * 1. The page's tool collects a confirmation through the gate.
  * 2. Its `exchangeConsent` calls YOUR consent endpoint with the tool name and
- *    the `argsDigest` of the exact arguments. That endpoint applies whatever
- *    checks you have (session, rate limits, server-minted state) and answers
- *    with `signConsentProof(...)`.
- * 3. `execute` sends the proof with the action. The action endpoint
- *    recomputes the digest from the arguments it received and calls
- *    `verifyConsentProof(...)` before doing anything.
+ *    the exact arguments. That endpoint applies whatever rules you have —
+ *    which tools may be exchanged at all, session, rate limits, ceilings on
+ *    the arguments, server-minted state — and answers with
+ *    `signConsentProof(...)`, computing the digest itself.
+ * 3. `execute` sends the proof with the arguments. The action endpoint calls
+ *    `verifyConsentProof(...)` with the arguments it is about to act on
+ *    before doing anything.
  *
  * ## What a valid proof proves
  *
  * That your consent endpoint, holding the secret, issued it recently, for
- * this exact tool, these exact arguments and this audience, and that it has
- * not been used before. That closes the direct-writer bypass (the action
- * endpoint no longer accepts a bare "consent: yes" field), binds
- * authorization to one exact operation (a proof for one target cannot be
- * replayed against another), and makes the work rate-limitable at the point
- * where proofs are issued.
+ * this exact tool, these exact arguments, this audience (and this subject,
+ * if you bind one), and that it has not been used before. That closes the
+ * direct-writer bypass (the action endpoint no longer accepts a bare
+ * "consent: yes" field), binds authorization to one exact operation (a
+ * proof for one target cannot be replayed against another), and makes the
+ * work rate-limitable at the point where proofs are issued.
  *
  * ## What it does not prove
  *
@@ -34,20 +35,28 @@
  * of a person. Rate limit the consent endpoint on something the caller cannot
  * rotate, and keep money and personal data off this path. See SECURITY.md.
  *
+ * Without a `subject` a proof is a bearer token: whoever holds it may spend
+ * it, once. Bind the session or account id as `subject` when the action is
+ * per-user.
+ *
  * ## Format
  *
  * `v1.<payload>.<mac>`, both parts unpadded base64url. The payload is UTF-8
- * JSON `{ v, aud, tool, args, iat, exp, nonce }`; the MAC is HMAC-SHA-256
- * over the ASCII bytes of `v1.<payload>`. The payload is signed, not
- * encrypted: it holds a tool name and a digest, never the arguments
- * themselves, but treat it as readable.
+ * JSON `{ v, aud, tool, args, iat, exp, nonce, sub? }`; the MAC is
+ * HMAC-SHA-256 over the ASCII bytes of `webmcp-consent/proof/v1.<payload>`.
+ * The context prefix keeps a MAC from ever validating as some other HMAC
+ * your application computes — but use a dedicated secret anyway. The payload
+ * is signed, not encrypted: it holds a tool name and a digest, never the
+ * arguments themselves, but treat it as readable.
  *
  * WebCrypto only — no `node:` imports — so this runs unchanged in Node 22+,
  * browsers and Workers. Never put the secret in a browser bundle; it runs in
  * a browser only so tests and edge runtimes can share it.
  */
 
-export { argsDigest } from "./digest.js";
+import { argsDigest } from "./digest.js";
+
+export { argsDigest };
 
 /** Tolerated clock difference between the server that signs and the one that verifies. */
 export const CONSENT_PROOF_CLOCK_SKEW_MS = 5_000;
@@ -55,60 +64,96 @@ export const CONSENT_PROOF_CLOCK_SKEW_MS = 5_000;
 /** Longest lifetime `signConsentProof` will mint. Proofs are meant to be spent in seconds. */
 export const CONSENT_PROOF_MAX_TTL_MS = 10 * 60_000;
 
-/** The shortest secret accepted: 256 bits, the HMAC-SHA-256 block of entropy that matters. */
+/**
+ * Longest proof either side accepts. It bounds the work an unauthenticated
+ * caller can make `verifyConsentProof` do, and `signConsentProof` enforces it
+ * too, so a long audience or tool name fails where it is minted instead of
+ * producing a proof that can never verify.
+ */
+export const CONSENT_PROOF_MAX_LENGTH = 2_048;
+
+/**
+ * The shortest secret accepted, in bytes. 32 bytes is the HMAC-SHA-256
+ * output size and the usual key-size floor. Length is not entropy: this
+ * check rejects a short secret, not a guessable one — generate it randomly.
+ */
 const MIN_SECRET_BYTES = 32;
 
-/** Bounds the work an unauthenticated caller can make `verifyConsentProof` do. */
-const MAX_PROOF_LENGTH = 2_048;
+/** How many secrets verification will try, so rotation cannot become a work multiplier. */
+const MAX_SECRETS = 4;
 
 const VERSION = "v1";
+const MAC_CONTEXT = "webmcp-consent/proof/";
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
 const DIGEST_HEX = /^[0-9a-f]{64}$/;
 
 /**
  * A shared secret: a string (UTF-8) or raw bytes (any typed array or
- * DataView, e.g. a Node Buffer). At least 32 bytes either way — generate it
- * randomly, e.g. `crypto.getRandomValues(new Uint8Array(32))`, and keep it
- * on the server.
+ * DataView, e.g. a Node Buffer). At least 32 bytes either way. Generate it
+ * randomly — `crypto.getRandomValues(new Uint8Array(32))` — dedicate it to
+ * consent proofs, and keep it on the server.
  */
 export type ConsentProofSecret = string | ArrayBufferView;
 
-export type SignConsentProofOptions = {
-  secret: ConsentProofSecret;
+/**
+ * The operation a proof is bound to. Pass `args` and the digest is computed
+ * for you — the safe default, because it cannot come from the client. Pass
+ * `argsDigest` only if you already computed it yourself, server-side.
+ */
+export type ConsentProofOperation = {
   /** The tool whose call this authorizes. */
   toolName: string;
-  /** `argsDigest(toolName, args)` of the call being authorized. */
-  argsDigest: string;
+} & (
+  | { args: unknown; argsDigest?: never }
+  | { argsDigest: string; args?: never }
+);
+
+export type SignConsentProofOptions = ConsentProofOperation & {
+  secret: ConsentProofSecret;
   /**
-   * Who may accept the proof: name the action endpoint or deployment, e.g.
+   * Who may accept the proof: name the action endpoint and environment, e.g.
    * `"https://api.example.com/handoff"`. A proof minted for staging is then
-   * worthless against production even if the two share a secret.
+   * worthless against production.
    */
   audience: string;
+  /**
+   * Optional: who may spend it — the session or account id. A proof with a
+   * subject verifies only for that subject; without one it is a bearer token.
+   */
+  subject?: string;
   /** Lifetime in ms, at most `CONSENT_PROOF_MAX_TTL_MS`. Seconds, not minutes. */
   ttlMs: number;
   /** Current time in ms since the epoch. Defaults to `Date.now()`. */
   now?: number;
 };
 
-export type VerifyConsentProofOptions = {
-  secret: ConsentProofSecret;
+export type VerifyConsentProofOptions = ConsentProofOperation & {
+  /**
+   * The secret, or during a rotation up to four of them, newest first. A
+   * proof signed with any of them verifies.
+   */
+  secret: ConsentProofSecret | readonly ConsentProofSecret[];
   /** The proof as received. Anything — it is untrusted input. */
   proof: unknown;
-  /** The tool this endpoint performs. */
-  toolName: string;
-  /** Recompute this from the arguments the endpoint is about to act on. Never take it from the client. */
-  argsDigest: string;
   audience: string;
+  /**
+   * The subject this request acts for, if proofs are minted with one. Must
+   * match the proof's exactly: a proof with a subject is refused when none
+   * is given, and the other way round.
+   */
+  subject?: string;
   /** Current time in ms since the epoch. Defaults to `Date.now()`. */
   now?: number;
   /**
    * Single use is YOUR storage. Called once, last, only for a proof that
-   * passed every other check. Record the nonce and return `true`; if the
-   * nonce was already recorded, return `false`. Do both atomically — a
-   * read-then-write that two requests can interleave accepts a proof twice.
-   * `expiresAt` (ms since the epoch) is when the record may be deleted: an
-   * expired proof fails verification before `consume` is ever called.
+   * passed every other check, as a plain function (pass an arrow, not an
+   * unbound method). Record the nonce and return `true`; if the nonce was
+   * already recorded, return `false`. Do both atomically — a read-then-write
+   * that two requests can interleave accepts a proof twice.
+   *
+   * Keep the record at least until `expiresAt` (ms since the epoch). That is
+   * past the last moment any verifier will accept the proof, with margin for
+   * clock skew between verifiers; evict earlier and a replay can slip in.
    *
    * Required, because a proof that can be replayed authorizes as many
    * operations as an attacker cares to send. A throw, a rejection, or any
@@ -117,10 +162,12 @@ export type VerifyConsentProofOptions = {
   consume: (nonce: string, expiresAt: number) => Promise<boolean>;
 };
 
-export type VerifiedConsentProof = {
+/** What a verified proof says. */
+export type ConsentProofClaims = {
   toolName: string;
   argsDigest: string;
   audience: string;
+  subject?: string;
   issuedAt: number;
   expiresAt: number;
   nonce: string;
@@ -129,10 +176,14 @@ export type VerifiedConsentProof = {
 /**
  * Why a proof was refused. For your logs — answer the client with one
  * undifferentiated 403, so the endpoint is not an oracle for which check a
- * forgery got past.
+ * forgery got past. (A server-side result, so it is `{ ok, reason }`, not the
+ * `{ ok, code, message }` envelope written for a model to read.)
  */
 export type ConsentProofFailure =
-  /** Not a proof: wrong type, too long, wrong shape, undecodable, or an invalid payload. */
+  /**
+   * Not a proof: wrong type, too long, wrong shape, undecodable, or an
+   * invalid payload — or the request's own `args` could not be digested.
+   */
   | "malformed"
   /** The MAC does not match: tampered, or signed with another secret. */
   | "bad_signature"
@@ -140,6 +191,8 @@ export type ConsentProofFailure =
   | "wrong_tool"
   /** Signed for different arguments. */
   | "wrong_args"
+  /** Signed for a different subject, or the subject is missing on one side. */
+  | "wrong_subject"
   | "expired"
   /** Issued in the future, beyond the allowed clock skew. */
   | "not_yet_valid"
@@ -151,7 +204,7 @@ export type ConsentProofFailure =
   | "misconfigured";
 
 export type ConsentProofVerification =
-  | { ok: true; proof: VerifiedConsentProof }
+  | { ok: true; claims: ConsentProofClaims }
   | { ok: false; reason: ConsentProofFailure };
 
 function subtle(): SubtleCrypto {
@@ -160,21 +213,37 @@ function subtle(): SubtleCrypto {
   return value;
 }
 
+function isWellFormed(text: string): boolean {
+  const native = (text as { isWellFormed?: () => boolean }).isWellFormed;
+  if (typeof native === "function") return native.call(text);
+  return !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(text);
+}
+
 function secretBytes(secret: unknown): Uint8Array | null {
   // isView rather than instanceof: a Node Buffer or a Uint8Array from another
   // realm is still bytes. Copied, so WebCrypto never sees a caller's buffer
-  // change underneath it.
+  // change underneath it. A string with a lone surrogate is refused: UTF-8
+  // encoding would silently turn it into U+FFFD, and two such secrets would
+  // collide.
   const bytes =
-    typeof secret === "string" ? new TextEncoder().encode(secret)
+    typeof secret === "string" ? (isWellFormed(secret) ? new TextEncoder().encode(secret) : null)
     : ArrayBuffer.isView(secret) ? new Uint8Array(secret.buffer, secret.byteOffset, secret.byteLength).slice()
     : null;
   return bytes !== null && bytes.byteLength >= MIN_SECRET_BYTES ? bytes : null;
 }
 
-async function hmac(secret: Uint8Array, message: string): Promise<Uint8Array> {
+/** One secret or a short list of them, every one valid — or null. */
+function secretList(secret: unknown): Uint8Array[] | null {
+  const candidates = Array.isArray(secret) ? [...secret] : [secret];
+  if (candidates.length === 0 || candidates.length > MAX_SECRETS) return null;
+  const keys = candidates.map(secretBytes);
+  return keys.every((key): key is Uint8Array => key !== null) ? keys : null;
+}
+
+async function hmac(secret: Uint8Array, signed: string): Promise<Uint8Array> {
   const crypto = subtle();
   const key = await crypto.importKey("raw", secret, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return new Uint8Array(await crypto.sign("HMAC", key, new TextEncoder().encode(message)));
+  return new Uint8Array(await crypto.sign("HMAC", key, new TextEncoder().encode(MAC_CONTEXT + signed)));
 }
 
 function base64url(bytes: Uint8Array): string {
@@ -218,28 +287,45 @@ function nonEmpty(value: unknown): value is string {
 }
 
 /**
+ * Resolve the operation's digest from `args` or `argsDigest` — exactly one
+ * of them. Returns null for "neither, both, or not a digest"; rejects (via
+ * argsDigest) when `args` cannot be digested.
+ */
+async function operationDigest(operation: { toolName: unknown; args?: unknown; argsDigest?: unknown; hasArgs: boolean }): Promise<string | null> {
+  const { toolName, args, argsDigest: digest, hasArgs } = operation;
+  if (!nonEmpty(toolName)) return null;
+  if (hasArgs === (digest !== undefined)) return null; // exactly one
+  if (!hasArgs) return typeof digest === "string" && DIGEST_HEX.test(digest) ? digest : null;
+  return argsDigest(toolName, args);
+}
+
+/**
  * Mint a proof. Call this from your consent endpoint after your own checks,
  * never from the page.
  *
  * Rejects with a `TypeError` for invalid options — a short secret, an empty
- * tool name or audience, a digest that is not 64 lowercase hex characters, or
- * a ttl outside (0, CONSENT_PROOF_MAX_TTL_MS] — so a misconfiguration fails
- * where it is written instead of minting something unverifiable.
+ * tool name, audience or subject, both or neither of `args` / `argsDigest`,
+ * args that cannot be digested, a ttl outside (0, CONSENT_PROOF_MAX_TTL_MS],
+ * a clock that overflows, or a result longer than CONSENT_PROOF_MAX_LENGTH —
+ * so a misconfiguration fails where it is written instead of minting
+ * something unverifiable.
  */
 export async function signConsentProof(options: SignConsentProofOptions): Promise<string> {
-  const { secret, toolName, argsDigest: digest, audience, ttlMs, now = Date.now() } = options;
+  const { secret, toolName, audience, subject, ttlMs, now = Date.now() } = options;
+  const hasArgs = "args" in options;
   const key = secretBytes(secret);
   if (key === null) throw new TypeError(`signConsentProof: secret must be at least ${MIN_SECRET_BYTES} bytes`);
-  if (!nonEmpty(toolName)) throw new TypeError("signConsentProof: toolName must be a non-empty string");
   if (!nonEmpty(audience)) throw new TypeError("signConsentProof: audience must be a non-empty string");
-  if (typeof digest !== "string" || !DIGEST_HEX.test(digest)) {
-    throw new TypeError("signConsentProof: argsDigest must be a lowercase SHA-256 hex digest");
-  }
+  if (subject !== undefined && !nonEmpty(subject)) throw new TypeError("signConsentProof: subject must be a non-empty string");
   if (typeof ttlMs !== "number" || !Number.isInteger(ttlMs) || ttlMs <= 0 || ttlMs > CONSENT_PROOF_MAX_TTL_MS) {
     throw new TypeError(`signConsentProof: ttlMs must be an integer in (0, ${CONSENT_PROOF_MAX_TTL_MS}]`);
   }
-  if (typeof now !== "number" || !Number.isSafeInteger(now) || now < 0) {
+  if (typeof now !== "number" || !Number.isSafeInteger(now) || now < 0 || !Number.isSafeInteger(now + ttlMs)) {
     throw new TypeError("signConsentProof: now must be a non-negative integer of ms since the epoch");
+  }
+  const digest = await operationDigest({ toolName, args: options.args, argsDigest: options.argsDigest, hasArgs });
+  if (digest === null) {
+    throw new TypeError("signConsentProof: pass a non-empty toolName and exactly one of args or a lowercase SHA-256 hex argsDigest");
   }
   const nonceBytes = new Uint8Array(16);
   globalThis.crypto.getRandomValues(nonceBytes);
@@ -251,9 +337,14 @@ export async function signConsentProof(options: SignConsentProofOptions): Promis
     iat: now,
     exp: now + ttlMs,
     nonce: base64url(nonceBytes),
+    ...(subject !== undefined ? { sub: subject } : {}),
   })));
   const signed = `${VERSION}.${payload}`;
-  return `${signed}.${base64url(await hmac(key, signed))}`;
+  const proof = `${signed}.${base64url(await hmac(key, signed))}`;
+  if (proof.length > CONSENT_PROOF_MAX_LENGTH) {
+    throw new TypeError(`signConsentProof: the proof would be ${proof.length} characters, over ${CONSENT_PROOF_MAX_LENGTH}; shorten the audience, tool name or subject`);
+  }
+  return proof;
 }
 
 /**
@@ -277,19 +368,22 @@ export async function verifyConsentProof(options: VerifyConsentProofOptions): Pr
 async function verify(options: VerifyConsentProofOptions): Promise<ConsentProofVerification> {
   // Read every option once: a getter must not answer one way when checked
   // and another when used.
-  const { secret, proof, toolName, argsDigest: digest, audience, consume } = options;
+  const { secret, proof, toolName, args, argsDigest: expectedDigest, audience, subject, consume } = options;
+  const hasArgs = "args" in options;
   const now = options.now ?? Date.now();
-  const key = secretBytes(secret);
+  const keys = secretList(secret);
   if (
-    key === null || !nonEmpty(toolName) || !nonEmpty(audience) ||
-    typeof digest !== "string" || !DIGEST_HEX.test(digest) ||
+    keys === null || !nonEmpty(toolName) || !nonEmpty(audience) ||
+    (subject !== undefined && !nonEmpty(subject)) ||
+    hasArgs === (expectedDigest !== undefined) ||
+    (!hasArgs && (typeof expectedDigest !== "string" || !DIGEST_HEX.test(expectedDigest))) ||
     typeof consume !== "function" ||
     typeof now !== "number" || !Number.isFinite(now)
   ) {
     return { ok: false, reason: "misconfigured" };
   }
 
-  if (typeof proof !== "string" || proof.length > MAX_PROOF_LENGTH) return { ok: false, reason: "malformed" };
+  if (typeof proof !== "string" || proof.length > CONSENT_PROOF_MAX_LENGTH) return { ok: false, reason: "malformed" };
   const parts = proof.split(".");
   if (parts.length !== 3 || parts[0] !== VERSION) return { ok: false, reason: "malformed" };
   const [, payloadPart, macPart] = parts as [string, string, string];
@@ -297,8 +391,13 @@ async function verify(options: VerifyConsentProofOptions): Promise<ConsentProofV
   const payloadBytes = fromBase64url(payloadPart);
   if (mac === null || payloadBytes === null) return { ok: false, reason: "malformed" };
 
-  const expected = await hmac(key, `${VERSION}.${payloadPart}`);
-  if (!timingSafeEqual(expected, mac)) return { ok: false, reason: "bad_signature" };
+  // Every key is tried, without stopping at the first match, so timing does
+  // not say which secret of a rotation signed the proof.
+  let authentic = false;
+  for (const key of keys) {
+    if (timingSafeEqual(await hmac(key, `${VERSION}.${payloadPart}`), mac)) authentic = true;
+  }
+  if (!authentic) return { ok: false, reason: "bad_signature" };
 
   // Authentic from here on, so a malformed payload means a signer bug, not
   // an attacker — but it is still refused rather than trusted.
@@ -310,9 +409,10 @@ async function verify(options: VerifyConsentProofOptions): Promise<ConsentProofV
   } catch {
     return { ok: false, reason: "malformed" };
   }
-  const { v, aud, tool, args, iat, exp, nonce } = payload;
+  const { v, aud, tool, args: boundDigest, iat, exp, nonce, sub } = payload;
   if (
-    v !== 1 || !nonEmpty(aud) || !nonEmpty(tool) || typeof args !== "string" || !nonEmpty(nonce) ||
+    v !== 1 || !nonEmpty(aud) || !nonEmpty(tool) || typeof boundDigest !== "string" || !nonEmpty(nonce) ||
+    (sub !== undefined && !nonEmpty(sub)) ||
     typeof iat !== "number" || typeof exp !== "number" ||
     !Number.isSafeInteger(iat) || !Number.isSafeInteger(exp) ||
     exp <= iat || exp - iat > CONSENT_PROOF_MAX_TTL_MS
@@ -320,15 +420,28 @@ async function verify(options: VerifyConsentProofOptions): Promise<ConsentProofV
     return { ok: false, reason: "malformed" };
   }
 
+  // The request's own args are digested only now: a forgery never costs a
+  // canonicalization, and args that cannot be digested are a bad request.
+  let digest: string;
+  if (hasArgs) {
+    try { digest = await argsDigest(toolName, args); }
+    catch { return { ok: false, reason: "malformed" }; }
+  } else {
+    digest = expectedDigest as string;
+  }
+
   if (aud !== audience) return { ok: false, reason: "wrong_audience" };
   if (tool !== toolName) return { ok: false, reason: "wrong_tool" };
-  if (args !== digest) return { ok: false, reason: "wrong_args" };
+  if (boundDigest !== digest) return { ok: false, reason: "wrong_args" };
+  if (sub !== subject) return { ok: false, reason: "wrong_subject" };
   if (now > exp + CONSENT_PROOF_CLOCK_SKEW_MS) return { ok: false, reason: "expired" };
   if (iat > now + CONSENT_PROOF_CLOCK_SKEW_MS) return { ok: false, reason: "not_yet_valid" };
 
   let fresh: unknown;
   try {
-    fresh = await consume(nonce, exp + CONSENT_PROOF_CLOCK_SKEW_MS);
+    // Twice the skew: this verifier accepts until exp + skew by ITS clock,
+    // and another verifier sharing the store may run up to a skew behind.
+    fresh = await consume(nonce, exp + 2 * CONSENT_PROOF_CLOCK_SKEW_MS);
   } catch {
     return { ok: false, reason: "consume_failed" };
   }
@@ -337,6 +450,14 @@ async function verify(options: VerifyConsentProofOptions): Promise<ConsentProofV
 
   return {
     ok: true,
-    proof: { toolName: tool, argsDigest: args, audience: aud, issuedAt: iat, expiresAt: exp, nonce },
+    claims: {
+      toolName: tool,
+      argsDigest: boundDigest,
+      audience: aud,
+      ...(sub !== undefined ? { subject: sub } : {}),
+      issuedAt: iat,
+      expiresAt: exp,
+      nonce,
+    },
   };
 }

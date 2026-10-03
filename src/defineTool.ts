@@ -21,7 +21,7 @@ import {
   type ConsentResult,
   type ConsentSurface,
 } from "./consent.js";
-import { argsDigest } from "./digest.js";
+import { canonicalArgs, digestCanonical } from "./digest.js";
 import type { ModelContextTool, ModelContextToolResult, ToolExecutionOptions } from "./types.js";
 
 /**
@@ -279,13 +279,21 @@ export type ConsentConfirmation = Extract<
 };
 
 /** What `exchangeConsent` receives. */
-export type ConsentExchangeRequest = {
+export type ConsentExchangeRequest<Args = unknown> = {
   /** The tool's registered name. */
   toolName: string;
   /**
-   * `argsDigest(toolName, args)` over the arguments `parseArgs` returned —
-   * the same arguments `execute` will receive. Your server binds the proof to
-   * it and recomputes it from the action request.
+   * The arguments the person was shown and `execute` will receive: a
+   * deep-frozen JSON copy of what `parseArgs` returned. Send them to your
+   * consent endpoint so it can apply its own rules (allowlists, ceilings,
+   * server-minted state) to the actual operation, not to an opaque hash —
+   * and recompute the digest there rather than trusting `argsDigest`.
+   */
+  args: Args;
+  /**
+   * `argsDigest(toolName, args)`. Convenient for logging and for a client
+   * that wants to check its own work; a consent endpoint should recompute it
+   * from `args`.
    */
   argsDigest: string;
   /** The confirmation's audit token, if the surface minted one. */
@@ -303,7 +311,7 @@ export type ConsentExchangeRequest = {
  * empty string, no answer before the deadline — fails closed as
  * `consent_unverified` and the action never runs.
  */
-export type ConsentExchange = (request: ConsentExchangeRequest) => Promise<string> | string;
+export type ConsentExchange<Args = unknown> = (request: ConsentExchangeRequest<Args>) => Promise<string> | string;
 
 /** How long the gate waits for `exchangeConsent` before failing closed. */
 export const CONSENT_EXCHANGE_TIMEOUT_MS = 30_000;
@@ -316,6 +324,24 @@ const UNVERIFIED: ToolFailure = {
     "Do not retry automatically. Tell the person it did not go through.",
 };
 
+/** Same code, before anyone was asked: verification is impossible here. */
+const UNVERIFIABLE: ToolFailure = {
+  ok: false,
+  code: "consent_unverified",
+  message:
+    "This action needs server verification that is not available on this page, so the person was not asked and nothing was done. " +
+    "Do not retry automatically.",
+};
+
+/** Recursively freeze a fresh JSON value, so nobody downstream can change what was bound. */
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object") {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+
 /** Distinguishes "the host cancelled" from "no proof" in the exchange's answer. */
 const EXCHANGE_CANCELLED = Symbol("exchange cancelled");
 
@@ -324,25 +350,19 @@ const EXCHANGE_CANCELLED = Symbol("exchange cancelled");
  * cannot throw into the runtime, cannot hang the call, and cannot confirm by
  * answering something that merely resembles a proof.
  *
- * The digest is computed after the confirmation and over the very object
- * `execute` receives, so the proof binds what will actually be sent. Args
- * that are not pure JSON cannot be digested; with an exchange configured,
- * such a call fails closed rather than binding to an approximation.
+ * `args` and `digest` come from the snapshot taken before the prompt (see
+ * defineConsequentialTool), so the proof binds the arguments the person was
+ * shown and `execute` receives.
  */
-async function exchangeProof(
-  exchange: ConsentExchange,
+function exchangeProof<Args>(
+  exchange: ConsentExchange<Args>,
   toolName: string,
-  args: unknown,
+  args: Args,
+  digest: string,
   auditToken: string | undefined,
   signal: AbortSignal | undefined,
 ): Promise<string | null | typeof EXCHANGE_CANCELLED> {
-  let digest: string;
-  try {
-    digest = await argsDigest(toolName, args);
-  } catch {
-    return null;
-  }
-  if (isAborted(signal)) return EXCHANGE_CANCELLED;
+  if (isAborted(signal)) return Promise.resolve(EXCHANGE_CANCELLED);
   const controller = new AbortController();
   return new Promise((resolve) => {
     let settled = false;
@@ -361,7 +381,7 @@ async function exchangeProof(
     catch { finish(null); return; }
     if (isAborted(signal)) { cancel(); return; }
     try {
-      const request: ConsentExchangeRequest = { toolName, argsDigest: digest, signal: controller.signal };
+      const request: ConsentExchangeRequest<Args> = { toolName, args, argsDigest: digest, signal: controller.signal };
       if (auditToken !== undefined) request.auditToken = auditToken;
       Promise.resolve(exchange(request)).then(
         (proof) => finish(typeof proof === "string" && proof.length > 0 ? proof : null),
@@ -402,8 +422,8 @@ export type ConsentDecisionRecord = {
   decision: ConsentDecision | "cancelled" | "unverified";
   /**
    * Milliseconds from asking the surface to the decision, including time a
-   * request spent queued behind another prompt. Measured with a monotonic
-   * clock where one exists.
+   * request spent queued behind another prompt and, with `exchangeConsent`,
+   * the exchange itself. Measured with a monotonic clock where one exists.
    */
   elapsedMs: number;
 };
@@ -487,10 +507,18 @@ export type ConsequentialToolSpec<Args> = Omit<ToolSpec<Args>, "execute"> & {
    * Optional. Trade each confirmation for a server proof before the action
    * runs — see `ConsentExchange` and `@melaninmap/webmcp-consent/server`.
    * When set, the action runs only with a proof, and receives it as
-   * `consent.proof`. Requires `parseArgs` to return pure JSON (see
-   * `argsDigest`).
+   * `consent.proof`.
+   *
+   * With an exchange, the arguments are pinned BEFORE the prompt: what
+   * `parseArgs` returned is canonicalized, and a deep-frozen JSON copy is
+   * what `describeConsent`, the exchange and `execute` all receive, so the
+   * proof binds exactly what the person was shown. That requires
+   * `parseArgs` to return plain JSON (see `argsDigest`; a tool with no
+   * arguments returns `{}`). Anything else is `invalid_arguments`, and
+   * nobody is prompted. `execute` should send `args` to your server as
+   * received, since the server recomputes the digest from them.
    */
-  exchangeConsent?: ConsentExchange;
+  exchangeConsent?: ConsentExchange<Args>;
 };
 
 const REFUSAL_DECISIONS: ReadonlySet<unknown> = new Set([
@@ -557,13 +585,32 @@ export function defineConsequentialTool<Args>(
       const args = safeParseArgs(spec.parseArgs, raw);
       if (args === null) return toToolResult(INVALID_ARGUMENTS);
 
+      // With an exchange, pin the arguments before anyone is asked. Digesting
+      // after the confirmation would let a person confirm a call that can
+      // never be verified, and would bind whatever the args had become by
+      // then — a describeConsent or a getter could show "2" and bind "200".
+      let pinned: { args: Args; digest: string } | undefined;
+      if (exchange !== undefined) {
+        // A configured exchange that is not callable is a gate that cannot
+        // verify. Fail closed rather than quietly skipping the step.
+        if (typeof exchange !== "function") return toToolResult(UNVERIFIABLE);
+        let text: string;
+        try { text = canonicalArgs(args); }
+        catch { return toToolResult(INVALID_ARGUMENTS); }
+        const snapshot = deepFreeze(JSON.parse(text) as Args);
+        try { pinned = { args: snapshot, digest: await digestCanonical(name, text) }; }
+        catch { return toToolResult(UNVERIFIABLE); } // no WebCrypto: an insecure context
+        if (isAborted(options.signal)) return toToolResult(CANCELLED);
+      }
+      const gated: Args = pinned ? pinned.args : args;
+
       const startedAt = now();
       const report = (outcome: ConsentDecisionRecord["decision"]) =>
         reportDecision(onDecision, name, outcome, startedAt);
 
       let decision: ConsentResult;
       try {
-        const request = spec.describeConsent(args);
+        const request = spec.describeConsent(gated);
         decision = await awaitConsent(spec.consent, request, options.signal);
       } catch {
         // A consent surface that fails is a consent surface that did not
@@ -582,12 +629,8 @@ export function defineConsequentialTool<Args>(
       }
 
       let confirmation: ConsentConfirmation = decision;
-      if (exchange !== undefined) {
-        // A configured exchange that is not callable is a gate that cannot
-        // verify. Fail closed rather than quietly skipping the step.
-        const proof = typeof exchange === "function"
-          ? await exchangeProof(exchange, name, args, decision.auditToken, options.signal)
-          : null;
+      if (exchange !== undefined && pinned !== undefined) {
+        const proof = await exchangeProof(exchange, name, pinned.args, pinned.digest, decision.auditToken, options.signal);
         if (proof === EXCHANGE_CANCELLED || isAborted(options.signal)) {
           report("cancelled");
           return toToolResult(CANCELLED);
@@ -603,7 +646,7 @@ export function defineConsequentialTool<Args>(
       if (isAborted(options.signal)) return toToolResult(CANCELLED);
 
       try {
-        return toToolResult(await spec.execute(args, confirmation, options));
+        return toToolResult(await spec.execute(gated, confirmation, options));
       } catch (error) {
         // Same as the read path: an aborted signal means cancelled.
         if (isAborted(options.signal)) return toToolResult(CANCELLED);
