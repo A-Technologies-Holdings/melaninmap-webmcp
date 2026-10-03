@@ -21,6 +21,7 @@ import {
   type ConsentResult,
   type ConsentSurface,
 } from "./consent.js";
+import { argsDigest } from "./digest.js";
 import type { ModelContextTool, ModelContextToolResult, ToolExecutionOptions } from "./types.js";
 
 /**
@@ -259,11 +260,118 @@ export function defineReadTool<Args>(spec: ToolSpec<Args>): ModelContextTool {
   };
 }
 
-/** The confirmed decision handed to a consequential action. */
+/**
+ * The confirmed decision handed to a consequential action — plus, when the
+ * tool has an `exchangeConsent` step, the server proof it was exchanged for.
+ */
 export type ConsentConfirmation = Extract<
   ConsentResult,
   { decision: "confirmed" }
->;
+> & {
+  /**
+   * The proof `exchangeConsent` returned for this exact call. Present if and
+   * only if the tool defines `exchangeConsent`: without one there is nothing
+   * to exchange, and with one the action never runs unless a proof came
+   * back. Send it with the action; your server checks it with
+   * `verifyConsentProof` from `@melaninmap/webmcp-consent/server`.
+   */
+  proof?: string;
+};
+
+/** What `exchangeConsent` receives. */
+export type ConsentExchangeRequest = {
+  /** The tool's registered name. */
+  toolName: string;
+  /**
+   * `argsDigest(toolName, args)` over the arguments `parseArgs` returned —
+   * the same arguments `execute` will receive. Your server binds the proof to
+   * it and recomputes it from the action request.
+   */
+  argsDigest: string;
+  /** The confirmation's audit token, if the surface minted one. */
+  auditToken?: string;
+  /**
+   * Aborts when the host cancels the call or the exchange deadline
+   * (`CONSENT_EXCHANGE_TIMEOUT_MS`) passes. Forward it to `fetch`.
+   */
+  signal: AbortSignal;
+};
+
+/**
+ * Trade a confirmation for a server proof bound to this exact call. Return
+ * the proof string; anything else — a throw, a rejection, a non-string, an
+ * empty string, no answer before the deadline — fails closed as
+ * `consent_unverified` and the action never runs.
+ */
+export type ConsentExchange = (request: ConsentExchangeRequest) => Promise<string> | string;
+
+/** How long the gate waits for `exchangeConsent` before failing closed. */
+export const CONSENT_EXCHANGE_TIMEOUT_MS = 30_000;
+
+const UNVERIFIED: ToolFailure = {
+  ok: false,
+  code: "consent_unverified",
+  message:
+    "The person confirmed, but the confirmation could not be verified with the server, so nothing was done. " +
+    "Do not retry automatically. Tell the person it did not go through.",
+};
+
+/** Distinguishes "the host cancelled" from "no proof" in the exchange's answer. */
+const EXCHANGE_CANCELLED = Symbol("exchange cancelled");
+
+/**
+ * Run the host's exchange under the same rules as the consent surface: it
+ * cannot throw into the runtime, cannot hang the call, and cannot confirm by
+ * answering something that merely resembles a proof.
+ *
+ * The digest is computed after the confirmation and over the very object
+ * `execute` receives, so the proof binds what will actually be sent. Args
+ * that are not pure JSON cannot be digested; with an exchange configured,
+ * such a call fails closed rather than binding to an approximation.
+ */
+async function exchangeProof(
+  exchange: ConsentExchange,
+  toolName: string,
+  args: unknown,
+  auditToken: string | undefined,
+  signal: AbortSignal | undefined,
+): Promise<string | null | typeof EXCHANGE_CANCELLED> {
+  let digest: string;
+  try {
+    digest = await argsDigest(toolName, args);
+  } catch {
+    return null;
+  }
+  if (isAborted(signal)) return EXCHANGE_CANCELLED;
+  const controller = new AbortController();
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value: string | null | typeof EXCHANGE_CANCELLED) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { signal?.removeEventListener("abort", cancel); } catch { /* ignore */ }
+      resolve(value);
+      // Tell an exchange still in flight that nobody is listening any more.
+      controller.abort();
+    };
+    const cancel = () => finish(EXCHANGE_CANCELLED);
+    const timer = setTimeout(() => finish(null), CONSENT_EXCHANGE_TIMEOUT_MS);
+    try { signal?.addEventListener("abort", cancel, { once: true }); }
+    catch { finish(null); return; }
+    if (isAborted(signal)) { cancel(); return; }
+    try {
+      const request: ConsentExchangeRequest = { toolName, argsDigest: digest, signal: controller.signal };
+      if (auditToken !== undefined) request.auditToken = auditToken;
+      Promise.resolve(exchange(request)).then(
+        (proof) => finish(typeof proof === "string" && proof.length > 0 ? proof : null),
+        () => finish(null),
+      );
+    } catch {
+      finish(null);
+    }
+  });
+}
 
 /**
  * What `onDecision` receives: one plain record per gated call.
@@ -283,10 +391,15 @@ export type ConsentDecisionRecord = {
   toolName: string;
   /**
    * The gate's outcome. `cancelled` means the host aborted the call while the
-   * prompt was open, whatever the surface reported; it is the same moment the
-   * model receives `tool_cancelled`.
+   * prompt was open (or while a confirmation was being exchanged), whatever
+   * the surface reported; it is the same moment the model receives
+   * `tool_cancelled`. `unverified` means the person confirmed but
+   * `exchangeConsent` produced no proof, so the action did not run.
+   *
+   * With `exchangeConsent`, a confirmation is reported once the exchange
+   * finishes, so `confirmed` always means "and the action is about to run".
    */
-  decision: ConsentDecision | "cancelled";
+  decision: ConsentDecision | "cancelled" | "unverified";
   /**
    * Milliseconds from asking the surface to the decision, including time a
    * request spent queued behind another prompt. Measured with a monotonic
@@ -370,6 +483,14 @@ export type ConsequentialToolSpec<Args> = Omit<ToolSpec<Args>, "execute"> & {
   execute: (args: Args, consent: ConsentConfirmation, options: ToolExecutionOptions) => Promise<unknown>;
   /** Optional. See `DecisionObserver`: logs decisions, never changes them. */
   onDecision?: DecisionObserver;
+  /**
+   * Optional. Trade each confirmation for a server proof before the action
+   * runs — see `ConsentExchange` and `@melaninmap/webmcp-consent/server`.
+   * When set, the action runs only with a proof, and receives it as
+   * `consent.proof`. Requires `parseArgs` to return pure JSON (see
+   * `argsDigest`).
+   */
+  exchangeConsent?: ConsentExchange;
 };
 
 const REFUSAL_DECISIONS: ReadonlySet<unknown> = new Set([
@@ -419,10 +540,12 @@ export function defineConsequentialTool<Args>(
 ): ModelContextTool {
   const mapError = spec.mapError ?? defaultErrorMapper;
   // Read once, at definition: the name in a decision record is then the name
-  // the host registered, and an observer behind a throwing getter fails here,
-  // where it is written, instead of rejecting a tool call into the runtime.
+  // the host registered, and an observer or exchange behind a throwing getter
+  // fails here, where it is written, instead of rejecting a tool call into
+  // the runtime.
   const name = spec.name;
   const onDecision = spec.onDecision;
+  const exchange = spec.exchangeConsent;
   return {
     name,
     description: spec.description,
@@ -453,15 +576,34 @@ export function defineConsequentialTool<Args>(
         report("cancelled");
         return toToolResult(CANCELLED);
       }
-      report(decision.decision);
       if (decision.decision !== "confirmed") {
+        report(decision.decision);
         return toToolResult(consentRefusal(decision.decision));
       }
+
+      let confirmation: ConsentConfirmation = decision;
+      if (exchange !== undefined) {
+        // A configured exchange that is not callable is a gate that cannot
+        // verify. Fail closed rather than quietly skipping the step.
+        const proof = typeof exchange === "function"
+          ? await exchangeProof(exchange, name, args, decision.auditToken, options.signal)
+          : null;
+        if (proof === EXCHANGE_CANCELLED || isAborted(options.signal)) {
+          report("cancelled");
+          return toToolResult(CANCELLED);
+        }
+        if (proof === null) {
+          report("unverified");
+          return toToolResult(UNVERIFIED);
+        }
+        confirmation = { ...decision, proof };
+      }
+      report("confirmed");
       // The observer runs synchronously and may itself abort the host signal.
       if (isAborted(options.signal)) return toToolResult(CANCELLED);
 
       try {
-        return toToolResult(await spec.execute(args, decision, options));
+        return toToolResult(await spec.execute(args, confirmation, options));
       } catch (error) {
         // Same as the read path: an aborted signal means cancelled.
         if (isAborted(options.signal)) return toToolResult(CANCELLED);
