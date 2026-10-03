@@ -155,11 +155,23 @@ test.describe("consent playground in a real browser", () => {
     expect(probe.shown).toHaveLength(3);
   });
 
+  test("an unanswered prompt expires as consent_timeout at its deadline", async ({ page }) => {
+    const { dialog } = await requestOnce(page);
+    await page.clock.runFor(4_900);
+    await expect(dialog).toBeVisible();
+    await page.clock.runFor(200);
+    await expect(dialog).toHaveCount(0);
+    const [result] = await playgroundResults(page, 1);
+    expect(result.envelope).toMatchObject({ ok: false, code: CODES.timeout });
+    await expect(page.locator("#count")).toHaveText("0");
+  });
+
   test("cancelling mid-prompt returns tool_cancelled and removes the dialog", async ({ page }) => {
     await page.locator("#cancel").click();
     const { dialog } = dialogParts(page);
     await expect(dialog).toBeVisible();
-    // The playground aborts after one second; wait on the dialog, not a clock.
+    // The playground aborts after one second of page time.
+    await page.clock.runFor(1_000);
     await expect(dialog).toHaveCount(0);
     const [result] = await playgroundResults(page, 1);
     expect(result.envelope).toMatchObject({ ok: false, code: CODES.cancelled });

@@ -93,14 +93,26 @@ export function dialogProbe(page) {
   return page.evaluate(() => ({ ...window.__consentProbe, shown: [...window.__consentProbe.shown] }));
 }
 
+const CLOCK_START = Date.parse("2026-01-01T00:00:00Z");
+const CLOCK_PAUSED = CLOCK_START + 60_000;
+
 /**
  * Open the playground and wait until its module has finished loading. The
  * registration chip changes from "Checking browser…" only after every control
  * is wired, so it is a real readiness signal rather than a delay.
+ *
+ * The playground hard-codes a five-second consent deadline, and a loaded CI
+ * machine can spend that long on a handful of actions. So page time is
+ * paused once the page is ready: deadlines elapse only when a test calls
+ * `page.clock.runFor()`, which also makes expiry and the playground's
+ * one-second cancel exact instead of waited for. Real-time deadlines are
+ * covered separately by queue.spec.mjs.
  */
 export async function openPlayground(page) {
+  await page.clock.install({ time: CLOCK_START });
   await page.goto("/examples/playground.html");
   await expect(page.locator("#registration")).not.toHaveText("Checking browser…");
+  await page.clock.pauseAt(CLOCK_PAUSED);
 }
 
 /** Wait for `count` results in the playground log, then return them oldest first. */

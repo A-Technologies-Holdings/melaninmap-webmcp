@@ -27,9 +27,11 @@ test.beforeEach(async ({ page }) => {
 
 test("an unanswered prompt resolves as consent_timeout and unmounts", async ({ page }) => {
   await page.evaluate(() => window.harness.call("A", { timeoutMs: 400 }));
-  await expect(dialogTitled(page, "A")).toBeVisible();
   const a = await result(page, "A");
   expect(a.envelope).toMatchObject({ ok: false, code: CODES.timeout });
+  // On a loaded machine 400ms can pass before a visibility check would run,
+  // so ask the probe whether the prompt mounted rather than racing it.
+  expect((await dialogProbe(page)).shown).toEqual(["A"]);
   await expect(consentDialog(page)).toHaveCount(0);
 });
 
