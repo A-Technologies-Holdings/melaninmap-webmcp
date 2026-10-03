@@ -10,7 +10,9 @@ const commits = execFileSync('git', ['rev-list', `${base}..HEAD`], { encoding: '
 let failures = 0;
 for (const sha of commits) {
   const message = execFileSync('git', ['show', '-s', '--format=%B', sha], { encoding: 'utf8' });
-  const trailers = execFileSync('git', ['interpret-trailers', '--parse'], { input: message, encoding: 'utf8' });
+  // This is a commit message, not a patch. Dependabot's metadata contains a
+  // standalone --- line, which must not hide a genuine trailing sign-off.
+  const trailers = execFileSync('git', ['interpret-trailers', '--parse', '--no-divider'], { input: message, encoding: 'utf8' });
   if (!/^Signed-off-by: .+ <[^<>\s]+@[^<>\s]+>$/im.test(trailers)) {
     console.error(`FAIL ${sha}: missing Signed-off-by DCO trailer`);
     failures += 1;

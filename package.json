@@ -52,8 +52,9 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
+    "@typescript/typescript6": "6.0.2",
     "publint": "0.3.24",
-    "typescript": "5.6.3",
+    "typescript": "7.0.2",
     "yaml": "2.9.1"
   },
   "engines": {
