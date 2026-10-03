@@ -23,7 +23,8 @@ green `main`. CI checks do not publish packages; releases remain manual.
    pointer resolution, build, the `node:test` behavioral suite, and
    `check:pack` (`publint` + `attw --pack` under the ESM-only profile).
 4. `npm pack --dry-run` and eyeball the file list — `dist/`, `src/`,
-   `schemas/`, `examples/`, `reference/`, and the docs, nothing else.
+   `schemas/`, `examples/*.ts` and `examples/*.css` (not `playground.html`),
+   `reference/`, and the docs, nothing else.
 5. Check `git status --porcelain` again, then `npm publish`.
    `prepublishOnly` reruns the gate; it does not enforce a clean checkout.
 6. `git tag v<version> && git push origin v<version>`, then open a GitHub release

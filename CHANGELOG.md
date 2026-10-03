@@ -60,8 +60,9 @@ First public release.
   action handlers. A call cancelled before its handler runs returns
   `tool_cancelled`, as does a handler that rejects after cancellation; a
   handler that completes anyway reports its real result. Execution options
-  that are not a real `AbortSignal` (`null`, `{}`) are ignored rather than
-  thrown on.
+  without a genuine `AbortSignal` (from any realm) are ignored rather than
+  thrown on, a signal that cannot be read fails closed as cancelled, and
+  handlers receive only `{ signal }`.
 - `domConsentSurface` bounds its prompt queue, expires queued prompts from
   enqueue time, and frees a slot as soon as a request settles.
 - Registration state is isolated per browser host, overlapping tool names
@@ -80,4 +81,3 @@ First public release.
   dismissal never confirms.
 - Playground redesign: tool card, queue demonstration, and a log of the exact
   result envelope each call returned.
-

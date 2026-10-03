@@ -61,18 +61,46 @@ const CANCELLED = {
 };
 
 /**
- * Read the host's execution options once, keeping only a real AbortSignal.
+ * This realm's own `AbortSignal.prototype.aborted` getter. Calling it on a
+ * value is a brand check that works across realms: a genuine signal from an
+ * iframe passes, while a Proxy, an `Object.create` object or a signal-shaped
+ * fake throws. It also ignores an own `aborted` property shadowing the real one.
+ */
+const abortedGetter: ((this: unknown) => boolean) | undefined = (() => {
+  try {
+    return typeof AbortSignal === "undefined"
+      ? undefined
+      : (Object.getOwnPropertyDescriptor(AbortSignal.prototype, "aborted")?.get as
+          | ((this: unknown) => boolean)
+          | undefined);
+  } catch {
+    return undefined;
+  }
+})();
+
+/** Never throws. A signal that cannot be read counts as aborted: fail closed. */
+function isAborted(signal: AbortSignal | undefined): boolean {
+  if (signal === undefined) return false;
+  try {
+    return abortedGetter ? abortedGetter.call(signal) === true : signal.aborted === true;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Read the host's execution options once, keeping only a genuine AbortSignal.
  *
  * The host is untyped in practice. `null`, `{}` or a signal-shaped object must
- * not throw on the way in, and must not arm a listener that throws later from
- * a timer, outside every try/catch in this file.
+ * not throw on the way in, and must not reach handlers as if it could cancel
+ * a `fetch`.
  */
 function executionOptions(options: unknown): ToolExecutionOptions {
   try {
     const signal = (options as { signal?: unknown } | null | undefined)?.signal;
-    return typeof AbortSignal !== "undefined" && signal instanceof AbortSignal
-      ? { signal }
-      : {};
+    if (abortedGetter === undefined || signal === null || typeof signal !== "object") return {};
+    abortedGetter.call(signal); // throws for anything that is not a real signal
+    return { signal: signal as AbortSignal };
   } catch {
     return {};
   }
@@ -95,14 +123,17 @@ async function awaitConsent(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      signal?.removeEventListener("abort", cancel);
+      // A host signal can carry its own throwing methods. This runs from a
+      // timer, outside every try/catch, so it must not throw.
+      try { signal?.removeEventListener("abort", cancel); } catch { /* ignore */ }
       resolve(result);
       controller.abort();
     };
     const cancel = () => finish({ decision: "closed" });
     const timer = setTimeout(() => finish({ decision: "timeout" }), timeoutMs);
-    signal?.addEventListener("abort", cancel, { once: true });
-    if (signal?.aborted) { cancel(); return; }
+    try { signal?.addEventListener("abort", cancel, { once: true }); }
+    catch { finish({ decision: "closed" }); return; }
+    if (isAborted(signal)) { cancel(); return; }
     try {
       Promise.resolve(surface({ ...request, timeoutMs }, { signal: controller.signal }))
         .then(value => {
@@ -212,7 +243,7 @@ export function defineReadTool<Args>(spec: ToolSpec<Args>): ModelContextTool {
     annotations: { ...spec.annotations, readOnlyHint: true },
     execute: async (raw, hostOptions) => {
       const options = executionOptions(hostOptions);
-      if (options.signal?.aborted) return toToolResult(CANCELLED);
+      if (isAborted(options.signal)) return toToolResult(CANCELLED);
       const args = safeParseArgs(spec.parseArgs, raw);
       if (args === null) return toToolResult(INVALID_ARGUMENTS);
       try {
@@ -220,7 +251,7 @@ export function defineReadTool<Args>(spec: ToolSpec<Args>): ModelContextTool {
       } catch (error) {
         // A handler that forwards the signal to fetch rejects with an abort
         // error. That is a cancellation, not an unavailable tool.
-        if (options.signal?.aborted) return toToolResult(CANCELLED);
+        if (isAborted(options.signal)) return toToolResult(CANCELLED);
         return toToolResult(safeMapError(mapError, error));
       }
     },
@@ -305,7 +336,7 @@ export function defineConsequentialTool<Args>(
     annotations: { ...spec.annotations, readOnlyHint: false, consequentialHint: true },
     execute: async (raw, hostOptions) => {
       const options = executionOptions(hostOptions);
-      if (options.signal?.aborted) return toToolResult(CANCELLED);
+      if (isAborted(options.signal)) return toToolResult(CANCELLED);
       const args = safeParseArgs(spec.parseArgs, raw);
       if (args === null) return toToolResult(INVALID_ARGUMENTS);
 
@@ -319,7 +350,7 @@ export function defineConsequentialTool<Args>(
         return toToolResult(consentRefusal("closed"));
       }
 
-      if (options.signal?.aborted) return toToolResult(CANCELLED);
+      if (isAborted(options.signal)) return toToolResult(CANCELLED);
       if (decision.decision !== "confirmed") {
         return toToolResult(consentRefusal(decision.decision));
       }
@@ -328,7 +359,7 @@ export function defineConsequentialTool<Args>(
         return toToolResult(await spec.execute(args, decision, options));
       } catch (error) {
         // Same as the read path: an aborted signal means cancelled.
-        if (options.signal?.aborted) return toToolResult(CANCELLED);
+        if (isAborted(options.signal)) return toToolResult(CANCELLED);
         return toToolResult(safeMapError(mapError, error));
       }
     },

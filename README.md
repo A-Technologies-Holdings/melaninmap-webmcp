@@ -87,6 +87,10 @@ const search = defineReadTool({
 A consequential tool requires a `ConsentSurface` and a description of what the
 person is agreeing to. Both are mandatory arguments.
 
+The example surface is not a package export: copy `examples/domConsentSurface.ts`
+(and `examples/consent-surface.css`) into your app and change its import to
+`@melaninmap/webmcp-consent`.
+
 ```ts
 import { domConsentSurface } from "./examples/domConsentSurface";
 
@@ -130,7 +134,7 @@ fork. It follows the light/dark preference and honors reduced motion and forced
 colors.
 
 `registerAgentTools` is fully feature-detected. In any browser without either
-proposed registrar API it is a silent no-op that costs two property reads. Load
+proposed registrar API it is a silent no-op that costs two `modelContext` lookups. Load
 it lazily after your app mounts: a registrar that can break the host page is
 worse than no registrar.
 
@@ -233,7 +237,7 @@ happens until you answer it. Decline, and the model is told you declined and
 told not to retry.
 
 In any other browser the registrar is a silent no-op — the site works normally
-and pays two property reads for the feature detection.
+and pays two `modelContext` lookups for the feature detection.
 
 ## How it's built
 
