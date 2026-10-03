@@ -265,6 +265,91 @@ export type ConsentConfirmation = Extract<
   { decision: "confirmed" }
 >;
 
+/**
+ * What `onDecision` receives: one plain record per gated call.
+ *
+ * Deliberately small. It carries no arguments and no tokens, because a
+ * decision log is usually shipped somewhere lower-trust than the action
+ * itself — an analytics pipeline, a third-party logger — and arguments are
+ * where personal data lives (a message body, a recipient, an address). The
+ * audit token stays out for the same reason: it already reaches `execute`,
+ * which is the one place that needs it, and a copy in a log is a copy an
+ * attacker reading that log can replay into your audit trail. If you want
+ * either in your log, you already have both inside `execute`, where you
+ * decide what leaves the page.
+ */
+export type ConsentDecisionRecord = {
+  /** The tool's registered name. */
+  toolName: string;
+  /**
+   * The gate's outcome. `cancelled` means the host aborted the call while the
+   * prompt was open, whatever the surface reported; it is the same moment the
+   * model receives `tool_cancelled`.
+   */
+  decision: ConsentDecision | "cancelled";
+  /**
+   * Milliseconds from asking the surface to the decision, including time a
+   * request spent queued behind another prompt. Measured with a monotonic
+   * clock where one exists.
+   */
+  elapsedMs: number;
+};
+
+/**
+ * Observe every consent decision a consequential tool reaches — for your own
+ * confirmation log, metrics, or an "agent activity" panel.
+ *
+ * Called exactly once per call that reached the consent gate (its arguments
+ * parsed), at the moment the decision is known and before any action runs.
+ * Calls refused earlier — cancelled before they started, or invalid
+ * arguments — never asked anyone anything and are not reported.
+ *
+ * It is an observer, not a participant: it cannot change the result or veto
+ * the action, its return value is ignored, and it is never awaited, so a slow
+ * logger cannot delay the tool. A synchronous throw or a rejected promise is
+ * swallowed. (A synchronous function that blocks the thread still blocks the
+ * thread — nothing in JavaScript can prevent that — so keep it cheap.)
+ */
+export type DecisionObserver = (record: ConsentDecisionRecord) => unknown;
+
+/** A monotonic clock where the runtime has one; elapsed time must not go negative. */
+function now(): number {
+  try {
+    if (typeof performance !== "undefined" && typeof performance.now === "function") {
+      return performance.now();
+    }
+  } catch { /* fall through */ }
+  return Date.now();
+}
+
+/**
+ * Report a decision without letting the observer touch the result.
+ *
+ * Every step is inside the try: calling the observer, and adopting whatever
+ * it returned. `Promise.resolve` on a hostile thenable can itself throw
+ * synchronously (a throwing `constructor` getter on a promise subclass), and
+ * attaching the catch is what keeps an async observer's rejection from
+ * surfacing as an unhandled rejection in the host page.
+ */
+function reportDecision(
+  observer: DecisionObserver | undefined,
+  toolName: string,
+  decision: ConsentDecisionRecord["decision"],
+  startedAt: number,
+): void {
+  if (typeof observer !== "function") return;
+  try {
+    const returned = observer({
+      toolName,
+      decision,
+      elapsedMs: Math.max(0, now() - startedAt),
+    });
+    if (returned !== null && (typeof returned === "object" || typeof returned === "function")) {
+      Promise.resolve(returned).catch(() => undefined);
+    }
+  } catch { /* An observer that fails has observed nothing. The result stands. */ }
+}
+
 export type ConsequentialToolSpec<Args> = Omit<ToolSpec<Args>, "execute"> & {
   /** The confirmation surface. Required — this is the point of the package. */
   consent: ConsentSurface;
@@ -283,6 +368,8 @@ export type ConsequentialToolSpec<Args> = Omit<ToolSpec<Args>, "execute"> & {
    * exactly the kind of ambient authority this package argues against.
    */
   execute: (args: Args, consent: ConsentConfirmation, options: ToolExecutionOptions) => Promise<unknown>;
+  /** Optional. See `DecisionObserver`: logs decisions, never changes them. */
+  onDecision?: DecisionObserver;
 };
 
 const REFUSAL_DECISIONS: ReadonlySet<unknown> = new Set([
@@ -331,8 +418,10 @@ export function defineConsequentialTool<Args>(
   spec: ConsequentialToolSpec<Args>,
 ): ModelContextTool {
   const mapError = spec.mapError ?? defaultErrorMapper;
+  // Read once, so the name in a decision record is the name the host registered.
+  const name = spec.name;
   return {
-    name: spec.name,
+    name,
     description: spec.description,
     inputSchema: spec.inputSchema,
     annotations: { ...spec.annotations, readOnlyHint: false, consequentialHint: true },
@@ -342,6 +431,10 @@ export function defineConsequentialTool<Args>(
       const args = safeParseArgs(spec.parseArgs, raw);
       if (args === null) return toToolResult(INVALID_ARGUMENTS);
 
+      const startedAt = now();
+      const report = (outcome: ConsentDecisionRecord["decision"]) =>
+        reportDecision(spec.onDecision, name, outcome, startedAt);
+
       let decision: ConsentResult;
       try {
         const request = spec.describeConsent(args);
@@ -349,10 +442,15 @@ export function defineConsequentialTool<Args>(
       } catch {
         // A consent surface that fails is a consent surface that did not
         // confirm. Fail closed, always.
+        report("closed");
         return toToolResult(consentRefusal("closed"));
       }
 
-      if (isAborted(options.signal)) return toToolResult(CANCELLED);
+      if (isAborted(options.signal)) {
+        report("cancelled");
+        return toToolResult(CANCELLED);
+      }
+      report(decision.decision);
       if (decision.decision !== "confirmed") {
         return toToolResult(consentRefusal(decision.decision));
       }
