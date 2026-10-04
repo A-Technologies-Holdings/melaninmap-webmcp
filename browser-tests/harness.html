@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>Consent surface test harness</title>
+<link rel="stylesheet" href="/examples/consent-surface.css">
+<!--
+  Test-only page. The playground hard-codes a five-second deadline; this page
+  drives the same built modules with per-request deadlines so queue-time
+  expiry can be tested in well under a second instead of waiting 5s per call.
+  Every request is titled with its id so tests can tell dialogs apart.
+-->
+<body>
+<script type="module">
+import { defineConsequentialTool } from "/dist/index.js";
+import { domConsentSurface } from "/.test-build/examples/domConsentSurface.js";
+
+const results = {};
+const started = {};
+const controllers = {};
+
+function request(id, timeoutMs) {
+  return { title: id, detail: `Test request ${id}.`, confirmLabel: "Confirm", timeoutMs };
+}
+
+const tool = defineConsequentialTool({
+  name: "harness_action",
+  description: "Test-only consequential action.",
+  inputSchema: { type: "object" },
+  parseArgs: (args) => (typeof args.id === "string" ? args : null),
+  consent: domConsentSurface,
+  describeConsent: ({ id, timeoutMs }) => request(id, timeoutMs),
+  execute: async ({ id }) => ({ ok: true, id }),
+});
+
+function begin(id) {
+  if (id in started) throw new Error(`duplicate request id ${id}`);
+  started[id] = performance.now();
+  controllers[id] = new AbortController();
+  return controllers[id].signal;
+}
+
+window.harness = {
+  ready: true,
+  results,
+  started,
+  /** Full tool path: the envelope the agent would receive. */
+  call(id, { timeoutMs } = {}) {
+    const signal = begin(id);
+    tool.execute({ id, timeoutMs }, { signal }).then((result) => {
+      results[id] = { envelope: JSON.parse(result.content[0].text), at: performance.now() };
+    });
+  },
+  /** The surface alone, bypassing the gate's own deadline. */
+  surface(id, { timeoutMs } = {}) {
+    const signal = begin(id);
+    domConsentSurface(request(id, timeoutMs), { signal }).then((result) => {
+      results[id] = { decision: result.decision, at: performance.now() };
+    });
+  },
+  abort(id) {
+    controllers[id].abort();
+  },
+};
+</script>
+</body>
+</html>

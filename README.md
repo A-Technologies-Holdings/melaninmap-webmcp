@@ -52,6 +52,16 @@ the incremental style so a caller's `AbortSignal` is not silently dropped —
 and a pack lint (`publint` + `attw`) proving the published artifact resolves
 the way consumers will import it. `npm test` builds and runs the suite alone.
 
+Two further checks run in the full/nightly regression lane rather than on every
+pull request. `npm run test:browser` runs the consent surface in real Chromium
+with Playwright (run `npx playwright install chromium` once first): focus,
+keyboard, untrusted clicks, queueing, expiry, cancellation, reduced motion,
+color schemes, and the gate behind Chromium's own WebMCP implementation.
+`npm run check:spec` fetches the WebMCP specification and fails with a readable
+diff when its API surface drifts from `spec/webmcp-surface.json`; it needs the
+network. See [docs/spec-drift.md](./docs/spec-drift.md) for the current
+findings.
+
 `npm run build` emits ESM plus declarations to `dist/`, which is what `main`,
 `types` and `exports` point at — importing the package gets you compiled
 JavaScript, not raw TypeScript that a consumer's runtime or bundler would have

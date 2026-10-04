@@ -91,6 +91,16 @@ versioned path.
   (that a human was present), with an end-to-end sketch.
 - `tsconfig.json` sets `"types": []`, so the library is typechecked without
   Node or test-tooling globals leaking in.
+- Real-browser consent suite (`npm run test:browser`, Playwright + Chromium,
+  dev-only): initial focus on Decline, Enter declines, Escape and backdrop
+  dismiss as `consent_closed`, untrusted Confirm clicks ignored, one dialog at
+  a time with in-order resolution, expiry counting queue time, cancellation
+  mid-prompt, reduced motion, accessible name/description ids, light and dark
+  schemes, and the gate behind Chromium's own WebMCP (`--enable-features=WebMCP`).
+- WebMCP spec-drift check (`npm run check:spec`): extracts the spec's WebIDL
+  surface and compares it with `spec/webmcp-surface.json`; network failures
+  are reported separately from drift. Findings as of 2026-10-03 are in
+  `docs/spec-drift.md`. No runtime change.
 
 ## [1.0.0] - 2026-10-03
 
