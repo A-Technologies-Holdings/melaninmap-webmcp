@@ -33,10 +33,17 @@ async function startHostCall(page, { abortable = false } = {}) {
       window.__hostAbort = () => controller.abort();
       const options = abortable ? { signal: controller.signal } : {};
       const settle = (promise) =>
-        promise.then((value) => ({ value }), (error) => ({ error: error?.name ?? String(error) }));
+        promise.then(
+          (value) => ({ value }),
+          (error) => ({ error: error?.name ?? String(error), message: error?.message }),
+        );
       let inputForm = "object";
       window.__hostCall = settle(document.modelContext.executeTool(tool, {}, options)).then((first) => {
-        if (first.error !== "UnknownError") return { ...first, inputForm };
+        // Retry only the input-parse rejection, which happens before the tool
+        // runs; any other failure is returned as is, never re-executed.
+        if (first.error !== "UnknownError" || !/parse input/i.test(first.message ?? "")) {
+          return { ...first, inputForm };
+        }
         inputForm = "json-string";
         return settle(document.modelContext.executeTool(tool, "{}", options)).then((second) => ({
           ...second,
@@ -69,6 +76,7 @@ test("the registered tool reaches the host as not read-only", async ({ page }) =
   const { annotations } = await startHostCall(page);
   expect(annotations).toMatchObject({ readOnlyHint: false });
   test.info().annotations.push({ type: "host annotations", description: JSON.stringify(annotations) });
+  await expect(consentDialog(page)).toBeVisible();
   await page.keyboard.press("Escape");
   const call = await page.evaluate(() => window.__hostCall);
   expect(envelopeFrom(call.value)).toMatchObject({ ok: false, code: CODES.dismissed });

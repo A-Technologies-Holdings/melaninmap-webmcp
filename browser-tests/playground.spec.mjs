@@ -84,8 +84,15 @@ test.describe("consent playground in a real browser", () => {
     await expect(page.locator("#count")).toHaveText("0");
   });
 
-  test("a click on the backdrop dismisses as consent_closed", async ({ page }) => {
+  test("a click on the backdrop dismisses as consent_closed; one on the padding does not", async ({ page }) => {
     const { dialog } = await requestOnce(page);
+    // The dialog's own padding also targets the <dialog> element, so only the
+    // pointer position tells it from the backdrop.
+    const box = await dialog.boundingBox();
+    await page.mouse.click(box.x + box.width / 2, box.y + 6);
+    await expect(dialog).toBeVisible();
+    await expect(page.locator("#log li")).toHaveCount(0);
+
     await page.mouse.click(4, 4);
     await expect(dialog).toHaveCount(0);
     const [result] = await playgroundResults(page, 1);
@@ -252,6 +259,8 @@ for (const [scheme, expected] of Object.entries(SCHEMES)) {
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
     await openPlayground(page);
     const { dialog, confirm } = await requestOnce(page);
+    // Park the pointer on the backdrop so Confirm is read at rest, not :hover.
+    await page.mouse.move(0, 0);
 
     await expect(dialog).toHaveCSS("background-color", expected.surface);
     await expect(dialog).toHaveCSS("color", expected.text);

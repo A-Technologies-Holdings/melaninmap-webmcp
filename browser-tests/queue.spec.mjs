@@ -35,6 +35,16 @@ test("an unanswered prompt resolves as consent_timeout and unmounts", async ({ p
   await expect(consentDialog(page)).toHaveCount(0);
 });
 
+test("the surface enforces its own deadline, without the gate's timer", async ({ page }) => {
+  // harness.surface() calls domConsentSurface directly, so only the surface's
+  // own timers can produce this timeout.
+  await page.evaluate(() => window.harness.surface("A", { timeoutMs: 300 }));
+  const a = await result(page, "A");
+  expect(a.decision).toBe("timeout");
+  expect((await dialogProbe(page)).shown).toEqual(["A"]);
+  await expect(consentDialog(page)).toHaveCount(0);
+});
+
 test("expiry includes queue time: a queued request can expire without ever showing", async ({ page }) => {
   await page.evaluate((ms) => window.harness.call("A", { timeoutMs: ms }), LONG);
   await expect(dialogTitled(page, "A")).toBeVisible();
@@ -106,6 +116,8 @@ test("a request beyond the queue's capacity is refused at once, without a dialog
   await page.evaluate((ms) => window.harness.call("D", { timeoutMs: ms }), LONG);
   const d = await result(page, "D");
   expect(d.envelope).toMatchObject({ ok: false, code: CODES.overCapacity });
+  // B and C were accepted into the queue, not refused: capacity is three.
+  expect(await page.evaluate(() => Object.keys(window.harness.results))).toEqual(["D"]);
   await expect(consentDialog(page)).toHaveCount(1);
   expect((await dialogProbe(page)).shown).toEqual(["A"]);
 });
