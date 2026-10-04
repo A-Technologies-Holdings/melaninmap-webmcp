@@ -9,7 +9,7 @@ green `main`. CI checks do not publish packages; releases remain manual.
 - You can publish to the `@melaninmap` npm scope (`npm whoami`), with 2FA
   ready for the publish OTP.
 - `main` is clean (`git status --porcelain`) and the release commit passed
-  `npm run check` in hosted CI. A configured workflow alone is not proof.
+  `npm run check` in hosted CI using a `release/*` PR branch or `ci:release` / `ci:full` label. Ready PR checks alone do not include package analysis. A configured workflow alone is not proof.
 - `CHANGELOG.md` has an entry for the version you are about to tag.
 
 ## Steps
@@ -34,9 +34,9 @@ green `main`. CI checks do not publish packages; releases remain manual.
 
 `npm publish --provenance` attests the tarball against the CI that built it,
 but provenance only works from a supported OIDC provider (GitHub Actions or
-GitLab CI). CI runs on Buildkite, which is not an npm provenance provider, and
-manual local publishing does not produce CI provenance. Use a supported OIDC publishing workflow before claiming
-provenance; ordinary CI success alone is insufficient.
+GitLab CI). Publishing is manual and Buildkite validation does not supply npm OIDC
+provenance. Do not claim provenance from ordinary CI success. Any publishing
+automation needs separate review; GitHub-hosted CI remains retired.
 
 ## After publishing
 
