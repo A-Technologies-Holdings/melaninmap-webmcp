@@ -6,12 +6,16 @@ export {
   type ConsentResult,
   type ConsentSurface,
 } from "./consent.js";
+export { argsDigest } from "./digest.js";
 export {
+  CONSENT_EXCHANGE_TIMEOUT_MS,
   defineConsequentialTool,
   defineReadTool,
   toToolResult,
   type ConsentConfirmation,
   type ConsentDecisionRecord,
+  type ConsentExchange,
+  type ConsentExchangeRequest,
   type ConsequentialToolSpec,
   type DecisionObserver,
   type ErrorMapper,

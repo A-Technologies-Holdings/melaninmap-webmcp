@@ -44,6 +44,51 @@ versioned path.
   a dialog that cannot be built or opened now resolves `closed` at once
   instead of blocking the queue. The playground fires four requests to show
   `busy`.
+- **Server-bound consent proofs.** `exchangeConsent` on
+  `defineConsequentialTool` trades a confirmation for a server proof before
+  `execute`. With an exchange configured, the arguments are pinned before the
+  prompt: canonicalized, and a deep-frozen JSON copy is what
+  `describeConsent`, the exchange and `execute` receive, so the proof binds
+  what the person was shown. Arguments that are not plain JSON are
+  `invalid_arguments` without prompting; a page without WebCrypto refuses as
+  `consent_unverified` without prompting. The exchange receives
+  `{ toolName, args, argsDigest, auditToken?, signal }` and must return a
+  proof string; a throw, a rejection, a non-string or empty answer, a
+  non-function, or no answer within `CONSENT_EXCHANGE_TIMEOUT_MS` (30 s)
+  fails closed as `consent_unverified` and the action never runs. A host
+  abort during the exchange is `tool_cancelled`. The proof reaches `execute`
+  as `consent.proof` (`ConsentConfirmation` gains an optional `proof`;
+  existing signatures are unchanged). New exported types `ConsentExchange`
+  and `ConsentExchangeRequest`.
+- **Type change:** `ConsentDecisionRecord["decision"]` gains `"unverified"`
+  (a confirmation that could not be exchanged for a proof). An exhaustive
+  `switch` over it will fail to typecheck until it handles the new case. With
+  an exchange configured, `confirmed` is reported only once a proof is in
+  hand, and `elapsedMs` includes the exchange.
+- **`argsDigest(toolName, args)`**: SHA-256 (WebCrypto) over canonical JSON
+  of `["webmcp-consent/args/v1", toolName, args]` — sorted keys, no
+  whitespace, RFC 8785 (JCS) output for every value accepted; values with no
+  JSON form are rejected with their path. Exported from the root and from
+  `/server`.
+- **`@melaninmap/webmcp-consent/server`**: `signConsentProof` and
+  `verifyConsentProof`.
+  - HMAC-SHA-256 with a context prefix over a base64url payload
+    (`v1.<payload>.<mac>`) binding audience, tool, argument digest, an
+    optional subject, issue and expiry times and a random nonce.
+  - Both accept `args` (digested for you) or a precomputed `argsDigest`.
+  - Verification accepts up to four secrets for rotation, compares MACs
+    without early exit, reads the payload only after the MAC, allows 5 s of
+    skew, and caps lifetimes at ten minutes and proofs at
+    `CONSENT_PROOF_MAX_LENGTH`. It calls a REQUIRED
+    `consume(nonce, expiresAt)` last; single use is the host's storage.
+  - It never throws and returns `{ ok: true, claims }` or
+    `{ ok: false, reason }`.
+  - Signing rejects anything verification would refuse.
+  - WebCrypto only, with no `node:` imports, so it runs in Node 22+, browsers
+    and Workers.
+- SECURITY.md and README state what a proof proves (this exact operation was
+  authorized by your consent endpoint, once, recently) and what it does not
+  (that a human was present), with an end-to-end sketch.
 - `tsconfig.json` sets `"types": []`, so the library is typechecked without
   Node or test-tooling globals leaking in.
 
