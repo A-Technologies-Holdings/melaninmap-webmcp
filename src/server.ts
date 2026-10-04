@@ -219,7 +219,7 @@ function isWellFormed(text: string): boolean {
   return !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(text);
 }
 
-function secretBytes(secret: unknown): Uint8Array | null {
+function secretBytes(secret: unknown): Uint8Array<ArrayBuffer> | null {
   // isView rather than instanceof: a Node Buffer or a Uint8Array from another
   // realm is still bytes. Copied, so WebCrypto never sees a caller's buffer
   // change underneath it. A string with a lone surrogate is refused: UTF-8
@@ -233,14 +233,14 @@ function secretBytes(secret: unknown): Uint8Array | null {
 }
 
 /** One secret or a short list of them, every one valid — or null. */
-function secretList(secret: unknown): Uint8Array[] | null {
+function secretList(secret: unknown): Uint8Array<ArrayBuffer>[] | null {
   const candidates = Array.isArray(secret) ? [...secret] : [secret];
   if (candidates.length === 0 || candidates.length > MAX_SECRETS) return null;
   const keys = candidates.map(secretBytes);
-  return keys.every((key): key is Uint8Array => key !== null) ? keys : null;
+  return keys.every((key): key is Uint8Array<ArrayBuffer> => key !== null) ? keys : null;
 }
 
-async function hmac(secret: Uint8Array, signed: string): Promise<Uint8Array> {
+async function hmac(secret: Uint8Array<ArrayBuffer>, signed: string): Promise<Uint8Array> {
   const crypto = subtle();
   const key = await crypto.importKey("raw", secret, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   return new Uint8Array(await crypto.sign("HMAC", key, new TextEncoder().encode(MAC_CONTEXT + signed)));
