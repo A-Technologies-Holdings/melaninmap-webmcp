@@ -38,11 +38,11 @@
     "url": "git+https://github.com/A-Technologies-Holdings/melaninmap-webmcp.git"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "prepack": "npm run build",
     "prepublishOnly": "npm run check",
-    "build:test": "tsc -p tsconfig.test.json",
+    "build:test": "node node_modules/typescript/bin/tsc -p tsconfig.test.json",
     "pretest": "npm run build && npm run build:test",
     "test": "node --test",
     "check:contract": "node scripts/check-contract-matches-reference.mjs",
