@@ -434,8 +434,10 @@ export type ConsentDecisionRecord = {
  *
  * Called exactly once per call that reached the consent gate (its arguments
  * parsed), at the moment the decision is known and before any action runs.
- * Calls refused earlier — cancelled before they started, or invalid
- * arguments — never asked anyone anything and are not reported.
+ * Calls refused earlier — cancelled before they started, invalid arguments,
+ * or (with `exchangeConsent`) a gate that cannot verify before it asks, such
+ * as a non-function exchange or no WebCrypto — never asked anyone anything
+ * and are not reported.
  *
  * It is an observer, not a participant: it cannot change the result or veto
  * the action, its return value is ignored, and it is never awaited, so a slow
