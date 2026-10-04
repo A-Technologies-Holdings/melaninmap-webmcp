@@ -457,6 +457,8 @@ export function defineConsequentialTool<Args>(
       if (decision.decision !== "confirmed") {
         return toToolResult(consentRefusal(decision.decision));
       }
+      // The observer runs synchronously and may itself abort the host signal.
+      if (isAborted(options.signal)) return toToolResult(CANCELLED);
 
       try {
         return toToolResult(await spec.execute(args, decision, options));

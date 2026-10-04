@@ -114,6 +114,17 @@ test("onDecision reports cancelled when the host aborts as the person confirms",
   assert.deepEqual(records, ["cancelled"]);
 });
 
+test("an observer that aborts the host signal stops the action", async () => {
+  const controller = new AbortController();
+  let ran = false;
+  const result = json(await tool({
+    onDecision: () => controller.abort(),
+    execute: async () => { ran = true; },
+  }).execute({}, { signal: controller.signal }));
+  assert.equal(result.code, "tool_cancelled");
+  assert.equal(ran, false);
+});
+
 test("calls that never reached the gate are not reported", async () => {
   const records = [];
   const observed = tool({ onDecision: (r) => records.push(r) });
