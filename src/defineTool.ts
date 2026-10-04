@@ -373,7 +373,8 @@ function exchangeProof<Args>(
       try { signal?.removeEventListener("abort", cancel); } catch { /* ignore */ }
       resolve(value);
       // Tell an exchange still in flight that nobody is listening any more.
-      controller.abort();
+      // A proof means it finished: leave work it bound to the signal alone.
+      if (typeof value !== "string") controller.abort();
     };
     const cancel = () => finish(EXCHANGE_CANCELLED);
     const timer = setTimeout(() => finish(null), CONSENT_EXCHANGE_TIMEOUT_MS);

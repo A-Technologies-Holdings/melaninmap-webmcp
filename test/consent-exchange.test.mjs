@@ -204,16 +204,27 @@ test("what the person saw is what gets bound and executed", async () => {
 test("a cancellation that lands after the proof but before execute cancels", async () => {
   const controller = new AbortController();
   const { definition, runs, decisions } = tool({
-    exchangeConsent: (request) => {
-      // The gate aborts the exchange's own signal once it has the answer;
-      // cancel the host call at exactly that moment.
-      request.signal.addEventListener("abort", () => controller.abort());
-      return "proof-in-hand";
+    exchangeConsent: () => {
+      // Cancel the host call one microtask after the gate takes the proof,
+      // before execute can start.
+      const proof = Promise.resolve("proof-in-hand");
+      proof.then(() => queueMicrotask(() => controller.abort()));
+      return proof;
     },
   });
   assert.equal(json(await definition.execute(call, { signal: controller.signal })).code, "tool_cancelled");
   assert.equal(runs.length, 0);
   assert.deepEqual(decisions, ["cancelled"]);
+});
+
+test("a successful exchange's signal is left alone for work it bound to it", async () => {
+  let exchangeSignal;
+  const { definition, runs } = tool({
+    exchangeConsent: (request) => { exchangeSignal = request.signal; return "proof-in-hand"; },
+  });
+  await definition.execute(call);
+  assert.equal(runs.length, 1);
+  assert.equal(exchangeSignal.aborted, false);
 });
 
 test("the host cancelling during the exchange cancels the call and aborts the exchange", async () => {

@@ -125,6 +125,8 @@ test("a tampered signature is refused", async () => {
   const truncated = await verify(`${version}.${payload}.${mac.slice(0, -4)}`);
   assert.equal(truncated.ok, false);
   assert.ok(["bad_signature", "malformed"].includes(truncated.reason), truncated.reason);
+  // An oversized MAC is refused as malformed, before any HMAC is computed.
+  assert.deepEqual(await verify(`${version}.${payload}.${Buffer.alloc(64, 1).toString("base64url")}`), { ok: false, reason: "malformed" });
 });
 
 test("a proof signed with another secret is refused", async () => {

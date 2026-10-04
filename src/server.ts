@@ -389,7 +389,9 @@ async function verify(options: VerifyConsentProofOptions): Promise<ConsentProofV
   const [, payloadPart, macPart] = parts as [string, string, string];
   const mac = fromBase64url(macPart);
   const payloadBytes = fromBase64url(payloadPart);
-  if (mac === null || payloadBytes === null) return { ok: false, reason: "malformed" };
+  // An HMAC-SHA-256 tag is always 32 bytes: refuse any other length before
+  // paying for one HMAC per key.
+  if (mac === null || payloadBytes === null || mac.length !== 32) return { ok: false, reason: "malformed" };
 
   // Every key is tried, without stopping at the first match, so timing does
   // not say which secret of a rotation signed the proof.
