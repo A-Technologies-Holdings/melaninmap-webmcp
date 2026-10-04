@@ -4,8 +4,8 @@ Recorded **2026-10-03** for SLA-1606. Package version compared: `1.0.0` on
 `main` (`src/types.ts`, `src/register.ts`, `src/defineTool.ts`).
 
 `npm run check:spec` re-runs the mechanical half of this comparison in the
-regression lane: nightly once the SLA-1569 schedule exists, and today on PRs
-labelled `ci:full` / `ci:release` (see [Keeping this current](#keeping-this-current)). This page is the
+SLA-1569 regression lanes: the nightly schedule on `main`, and PRs labelled
+`ci:full` / `ci:release` (see [Keeping this current](#keeping-this-current)). This page is the
 human half: what changed upstream, what it means for the package, and what to
 do about it.
 

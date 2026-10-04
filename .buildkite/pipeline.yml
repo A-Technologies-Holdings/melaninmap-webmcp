@@ -49,3 +49,39 @@ steps:
     notify:
       - github_check:
           name: "Buildkite / WebMCP nightly regression"
+
+  # SLA-1606: the real-browser suite and the WebMCP spec-drift check run in
+  # the regression lanes above only: the nightly schedule on main and release
+  # PRs (ci:full / ci:release / release/*), the union of the nightly-regression
+  # and release-regression conditions. Never in the focused ready-PR gate;
+  # neither check name is required.
+  - label: ":chromium: Browser consent suite"
+    key: browser-regression
+    if: "(build.source == 'schedule' && build.branch == 'main') || (build.pull_request.id != null && (build.pull_request.labels includes 'ci:full' || build.pull_request.labels includes 'ci:release' || build.branch =~ /^release\\//))"
+    command: "bash scripts/buildkite-check.sh browser"
+    timeout_in_minutes: 20
+    artifact_paths: "test-results/browser/**/*"
+    agents:
+      queue: "macos-15-medium"
+    concurrency: 1
+    concurrency_group: "melanin-map/pr-validation-free"
+    notify:
+      - github_check:
+          name: "Buildkite / WebMCP browser regression"
+  - label: ":scroll: WebMCP spec drift"
+    key: spec-drift
+    if: "(build.source == 'schedule' && build.branch == 'main') || (build.pull_request.id != null && (build.pull_request.labels includes 'ci:full' || build.pull_request.labels includes 'ci:release' || build.branch =~ /^release\\//))"
+    command: "bash scripts/buildkite-check.sh spec"
+    timeout_in_minutes: 5
+    # Exit 75 (EX_TEMPFAIL) is a network failure: nothing was compared, so
+    # show it, but do not report it as drift. Every other non-zero exit,
+    # including drift (1), an unparseable spec (3) and shell errors, fails.
+    soft_fail:
+      - exit_status: 75
+    agents:
+      queue: "macos-15-medium"
+    concurrency: 1
+    concurrency_group: "melanin-map/pr-validation-free"
+    notify:
+      - github_check:
+          name: "Buildkite / WebMCP spec drift"

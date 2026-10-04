@@ -29,3 +29,19 @@ DCO uses the fetched PR base branch merge-base with HEAD. Missing PR base metada
 Ready PRs retain typecheck, published contract/OpenAPI checks, build, the small behavioral test suite and DCO. Tarball analysis (`check:pack`) runs nightly and on release PRs; `prepublishOnly` still runs the complete gate. Use a `release/*` branch or add `ci:release`/`ci:full` to run the full package gate before merging a release. Each regression PR still reports the required `Buildkite / WebMCP package` check.
 
 Create one Buildkite schedule on `main`, commit `HEAD`, at `30 3 * * * America/Chicago` (03:30 Central daily), after this pipeline is on main. It runs `buildkite-check.sh regression`; it never publishes. Local equivalents: `bash scripts/buildkite-check.sh package` and `bash scripts/buildkite-check.sh regression`.
+
+## Browser and spec-drift regression (SLA-1606)
+
+Two more steps join the regression lanes above, on the union of their
+conditions: the nightly schedule on `main`, and PRs labelled `ci:full` or
+`ci:release` (or from a `release/*` branch). They never run in the focused
+ready-PR gate, and neither check is required. `Buildkite / WebMCP browser
+regression` installs Playwright's Chromium (`npx playwright install chromium`,
+cached on the agent) and runs `npm run test:browser`; failure traces and
+screenshots upload from `test-results/browser/`. `Buildkite / WebMCP spec drift`
+runs `npm run check:spec`: exit 1 is upstream drift, exit 3 means the spec no
+longer parses, and exit 75 (network failure, nothing compared) is a soft
+failure. Both share the serialized concurrency group on purpose: one macOS
+agent, no new queue. Local equivalents: `bash scripts/buildkite-check.sh browser`
+and `bash scripts/buildkite-check.sh spec`.
+
