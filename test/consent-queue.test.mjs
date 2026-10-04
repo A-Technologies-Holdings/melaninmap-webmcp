@@ -304,6 +304,28 @@ test("an expired request whose timer has not run yet does not count toward capac
   assert.equal((await fits).decision, "declined", "it was queued, not refused as busy");
 });
 
+test("an answer that lands after the deadline is refused, even before the timer runs", async () => {
+  const queue = createConsentQueue();
+  const late = queue.surface(ask("Late", 5));
+  const { id } = queue.getSnapshot();
+  const until = Date.now() + 20;
+  while (Date.now() < until) { /* block the event loop past the deadline */ }
+  assert.equal(queue.confirm(id, trusted), false);
+  assert.deepEqual(await late, { decision: "timeout" });
+  assert.equal(queue.getSnapshot(), null);
+});
+
+test("an expired displayed request whose timer has not run yet does not count toward capacity", async () => {
+  const queue = createConsentQueue({ capacity: 1 });
+  const doomed = queue.surface(ask("Doomed", 5));
+  const until = Date.now() + 20;
+  while (Date.now() < until) { /* block the event loop past Doomed's deadline */ }
+  const fits = queue.surface(ask("Fits"));
+  assert.deepEqual(await doomed, { decision: "timeout" });
+  await drain(queue, [fits]);
+  assert.equal((await fits).decision, "declined", "it was queued, not refused as busy");
+});
+
 test("createConsentQueue accepts no options or null options", async () => {
   for (const queue of [createConsentQueue(), createConsentQueue(undefined), createConsentQueue(null)]) {
     const held = [queue.surface(ask("1")), queue.surface(ask("2")), queue.surface(ask("3"))];

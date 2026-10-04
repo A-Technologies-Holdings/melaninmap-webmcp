@@ -242,12 +242,13 @@ export function createConsentQueue(options?: ConsentQueueOptions): ConsentQueue 
   };
 
   /**
-   * Expire waiting requests whose deadline has passed but whose timer has not
-   * run yet (a busy event loop). Otherwise they would count against capacity
-   * and turn a request that fits into a spurious `busy`.
+   * Expire requests whose deadline has passed but whose timer has not run yet
+   * (a busy event loop). Otherwise they would count against capacity and turn
+   * a request that fits into a spurious `busy`.
    */
   const purgeExpired = () => {
     const now = Date.now();
+    if (displayed !== null && displayed.entry.deadline <= now) displayed.entry.settle({ decision: "timeout" });
     for (const entry of [...waiting]) {
       if (entry.deadline <= now) entry.settle({ decision: "timeout" });
     }
@@ -329,6 +330,12 @@ export function createConsentQueue(options?: ConsentQueueOptions): ConsentQueue 
   const answer = (id: unknown, result: () => ConsentResult): boolean => {
     const current = displayed;
     if (current === null || typeof id !== "string" || current.snapshot.id !== id) return false;
+    // A late timer must not let an answer land after the deadline the surface
+    // showed: past it, the request has expired whatever the answer.
+    if (Date.now() >= current.entry.deadline) {
+      current.entry.settle({ decision: "timeout" });
+      return false;
+    }
     return current.entry.settle(result());
   };
 
