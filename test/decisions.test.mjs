@@ -125,6 +125,20 @@ test("an observer that aborts the host signal stops the action", async () => {
   assert.equal(ran, false);
 });
 
+test("elapsedMs counts from asking the surface, not from building the prompt", async () => {
+  const records = [];
+  await tool({
+    describeConsent: () => {
+      const until = Date.now() + 60;
+      while (Date.now() < until) { /* a slow prompt builder */ }
+      return prompt;
+    },
+    onDecision: (r) => records.push(r),
+  }).execute({});
+  assert.equal(records.length, 1);
+  assert.ok(records[0].elapsedMs < 50, `elapsedMs ${records[0].elapsedMs} must exclude describeConsent`);
+});
+
 test("calls that never reached the gate are not reported", async () => {
   const records = [];
   const observed = tool({ onDecision: (r) => records.push(r) });

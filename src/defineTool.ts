@@ -607,13 +607,16 @@ export function defineConsequentialTool<Args>(
       }
       const gated: Args = pinned ? pinned.args : args;
 
-      const startedAt = now();
+      // Restarted once the prompt is built: elapsedMs counts from asking the
+      // surface, not from running describeConsent.
+      let startedAt = now();
       const report = (outcome: ConsentDecisionRecord["decision"]) =>
         reportDecision(onDecision, name, outcome, startedAt);
 
       let decision: ConsentResult;
       try {
         const request = spec.describeConsent(gated);
+        startedAt = now();
         decision = await awaitConsent(spec.consent, request, options.signal);
       } catch {
         // A consent surface that fails is a consent surface that did not
