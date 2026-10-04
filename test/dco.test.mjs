@@ -18,6 +18,8 @@ test('DCO accepts trailers but rejects unsigned commits and signatures in prose'
     const check = () => spawnSync(process.execPath, [script], { cwd: root, env: { ...process.env, DCO_BASE: base }, encoding: 'utf8' });
     git('-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-qm', 'signed\n\nSigned-off-by: Test <test@example.org>');
     assert.equal(check().status, 0);
+    git('-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-qm', 'dependency update\n\n---\nupdated-dependencies:\n- dependency-name: typescript\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>');
+    assert.equal(check().status, 0, 'Dependabot metadata must not hide the trailing sign-off');
     git('-c', 'commit.gpgsign=false', 'commit', '--allow-empty', '-qm', 'unsigned');
     assert.equal(check().status, 1);
     git('-c', 'commit.gpgsign=false', 'commit', '--amend', '--allow-empty', '-qm', 'prose\n\nSigned-off-by: Test <test@example.org>\n\nThis is body text after the signature.');

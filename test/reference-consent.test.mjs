@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { test } from 'node:test';
-import ts from 'typescript';
+// TypeScript 7 supplies the CLI; the compatibility package supplies transpileModule.
+import ts from '@typescript/typescript6';
 
 // Evaluate the actual reference handlers with host dependencies stubbed.
 // This proves their behavior without introducing React into the runtime package.

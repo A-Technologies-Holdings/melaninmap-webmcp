@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
-import ts from 'typescript';
+// TypeScript 7 supplies the CLI; the compatibility package supplies transpileModule.
+import ts from '@typescript/typescript6';
 for (const cardPath of ['../reference/HandoffConsentCard.tsx']) {
  test(`${cardPath}: only a trusted current request opens a hand-off; rejected resolution closes it`, () => {
   const card = readFileSync(new URL(cardPath, import.meta.url), 'utf8');
