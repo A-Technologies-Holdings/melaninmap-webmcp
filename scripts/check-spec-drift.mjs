@@ -13,9 +13,10 @@
  * "could not look":
  *   0  no drift
  *   1  drift: the surface differs from the snapshot (or the source is gone)
- *   2  network: the source could not be fetched; nothing was compared
  *   3  extraction: the source was fetched but no WebIDL could be parsed
- *  64  usage error
+ *  64  usage error (including a --ref that does not exist upstream)
+ *  75  network: the source could not be fetched; nothing was compared
+ *      (EX_TEMPFAIL, so it cannot be confused with a shell or usage error)
  *
  * Usage:
  *   npm run check:spec
@@ -37,7 +38,7 @@ export const SPEC_PATH = "index.bs";
 export const DEFAULT_REF = "main";
 const DEFAULT_SNAPSHOT = fileURLToPath(new URL("../spec/webmcp-surface.json", import.meta.url));
 
-export const EXIT = { ok: 0, drift: 1, network: 2, extraction: 3, usage: 64 };
+export const EXIT = { ok: 0, drift: 1, extraction: 3, usage: 64, network: 75 };
 
 /**
  * What the package itself relies on. A drift report flags these first,
@@ -45,7 +46,7 @@ export const EXIT = { ok: 0, drift: 1, network: 2, extraction: 3, usage: 64 };
  * opportunity. Keep in step with src/register.ts and src/defineTool.ts.
  */
 export const PACKAGE_DEPENDENCIES = [
-  ["partial interface Document", "modelContext", "register.ts detects document.modelContext"],
+  ["interface Document", "modelContext", "register.ts detects document.modelContext"],
   ["interface ModelContext", "registerTool", "register.ts registers incrementally"],
   ["dictionary ModelContextRegisterToolOptions", "signal", "register.ts forwards { signal } to registerTool"],
   ["dictionary ModelContextTool", "name", "defineTool.ts emits name"],
@@ -66,6 +67,11 @@ export function sourceUrl(ref = DEFAULT_REF) {
 // Extraction (pure, offline)
 // ---------------------------------------------------------------------------
 
+/** Bikeshed drops HTML comments, so commented-out IDL is not normative. */
+function withoutComments(source) {
+  return source.replace(/<!--[\s\S]*?-->/g, "");
+}
+
 const ENTITIES = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'", "#39": "'" };
 
 /**
@@ -77,7 +83,7 @@ const ENTITIES = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'", "#39": "'" 
 export function extractIdlBlocks(source) {
   const blocks = [];
   const pattern = /<(xmp|pre)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi;
-  for (const [, tag, attributes, body] of source.matchAll(pattern)) {
+  for (const [, tag, attributes, body] of withoutComments(source).matchAll(pattern)) {
     const classMatch = /\bclass\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attributes);
     const classes = (classMatch?.[1] ?? classMatch?.[2] ?? classMatch?.[3] ?? "").split(/\s+/);
     if (!classes.includes("idl") || classes.includes("exclude")) continue;
@@ -93,7 +99,7 @@ export function extractIdlBlocks(source) {
 /** Policy-controlled features the spec defines (`<dfn permission>name</dfn>`). */
 export function extractPermissionsPolicyFeatures(source) {
   const names = new Set();
-  for (const [, attributes, name] of source.matchAll(/<dfn\b([^>]*)>([^<]+)<\/dfn>/gi)) {
+  for (const [, attributes, name] of withoutComments(source).matchAll(/<dfn\b([^>]*)>([^<]+)<\/dfn>/gi)) {
     if (/(^|\s)permission(\s|=|$)/i.test(attributes)) names.add(name.trim());
   }
   return [...names].sort();
@@ -163,13 +169,13 @@ function member(node) {
   }
 }
 
+/** One key per definition name: a partial and its full definition merge. */
 function definitionKey(node) {
-  const kind = node.type === "callback interface" ? "callback interface" : node.type;
-  return `${node.partial ? "partial " : ""}${kind} ${node.name}`;
+  return `${node.type} ${node.name}`;
 }
 
 function declaration(node) {
-  const head = `${extAttrs(node.extAttrs)}${definitionKey(node)}`;
+  const head = `${extAttrs(node.extAttrs)}${node.partial ? "partial " : ""}${definitionKey(node)}`;
   switch (node.type) {
     case "callback":
       return `${head} = ${type(node.idlType)} (${node.arguments.map(argument).join(", ")})`;
@@ -186,9 +192,11 @@ function declaration(node) {
 
 /**
  * Turn WebIDL text into a stable, diffable surface: one entry per
- * definition (partials of the same name merge), each with its declaration
- * line and its members as sorted canonical strings. Throws a WebIDL parse
- * error on malformed input.
+ * definition (a full definition and its partials merge under one key), each
+ * with its declaration line(s) and its members as sorted canonical strings.
+ * Moving a member between a definition and its partial changes the
+ * declaration line but never makes the member look removed. Throws a WebIDL
+ * parse error on malformed input.
  */
 export function surfaceFromIdl(blocks) {
   const definitions = {};
@@ -197,7 +205,8 @@ export function surfaceFromIdl(blocks) {
     for (const node of parse(block)) {
       if (node.type === "eof") continue;
       const key = node.type === "includes" ? `includes ${node.target} ${node.includes}` : definitionKey(node);
-      const entry = (definitions[key] ??= { declaration: declaration(node), members: [] });
+      const entry = (definitions[key] ??= { declarations: [], members: [] });
+      entry.declarations.push(declaration(node));
       for (const child of node.members ?? []) {
         entry.members.push(member(child));
         if (child.name) names.add(`${key}.${child.name}`);
@@ -206,7 +215,8 @@ export function surfaceFromIdl(blocks) {
   }
   const sorted = {};
   for (const key of Object.keys(definitions).sort()) {
-    sorted[key] = { declaration: definitions[key].declaration, members: [...new Set(definitions[key].members)].sort() };
+    const { declarations, members } = definitions[key];
+    sorted[key] = { declaration: [...new Set(declarations)].sort().join("; "), members: [...new Set(members)].sort() };
   }
   return { definitions: sorted, names };
 }
@@ -330,12 +340,17 @@ function parseArgs(argv) {
       return next;
     };
     if (flag === "--update") options.update = true;
-    else if (flag === "--ref") options.ref = value();
+    else if (flag === "--ref") {
+      options.ref = value();
+      options.refGiven = true;
+    }
     else if (flag === "--source-url") options.sourceUrl = value();
     else if (flag === "--snapshot") options.snapshot = path.resolve(value());
     else throw new Error(`unknown option ${flag}`);
   }
-  if (!/^[\w.\-/]+$/.test(options.ref)) throw new Error(`invalid --ref ${options.ref}`);
+  if (!/^[\w.\-/]+$/.test(options.ref) || options.ref.split("/").some((part) => part === "" || part === "." || part === "..")) {
+    throw new Error(`invalid --ref ${options.ref}`);
+  }
   return options;
 }
 
@@ -354,6 +369,10 @@ export async function main(argv = process.argv.slice(2), log = console) {
   try {
     source = await fetchText(url);
   } catch (error) {
+    if (error instanceof SourceMissingError && options.refGiven) {
+      log.error(`check-spec-drift: --ref ${options.ref} does not exist upstream (${error.message}).`);
+      return EXIT.usage;
+    }
     if (error instanceof SourceMissingError) {
       log.error(`SPEC DRIFT: ${error.message}.`);
       log.error("Find the spec's new location, update check-spec-drift.mjs and docs/spec-drift.md.");

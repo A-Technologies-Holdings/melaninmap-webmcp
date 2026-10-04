@@ -3,8 +3,9 @@
 Recorded **2026-10-03** for SLA-1606. Package version compared: `1.0.0` on
 `main` (`src/types.ts`, `src/register.ts`, `src/defineTool.ts`).
 
-`npm run check:spec` re-runs the mechanical half of this comparison every
-night (see [Keeping this current](#keeping-this-current)). This page is the
+`npm run check:spec` re-runs the mechanical half of this comparison in the
+regression lane: nightly once the SLA-1569 schedule exists, and today on PRs
+labelled `ci:full` / `ci:release` (see [Keeping this current](#keeping-this-current)). This page is the
 human half: what changed upstream, what it means for the package, and what to
 do about it.
 
@@ -154,8 +155,11 @@ and cancellation unmounts the dialog. Each item is listed for follow-up.
   `<xmp class="idl">` / `<pre class="idl">` block with
   [webidl2](https://github.com/w3c/webidl2.js) plus the `<dfn permission>`
   features, and compares the result with `spec/webmcp-surface.json`. It reports
-  drift by exit status: 0 for none, 1 for drift or a moved source, 2 for a
-  network failure (nothing compared), 3 for a source it can no longer parse. It
+  drift by exit status: 0 for none, 1 for drift or a moved source, 3 for a
+  source it can no longer parse, 64 for a usage error (including a `--ref`
+  that does not exist), 75 for a network failure (nothing compared). HTML
+  comments are ignored, and a definition and its partials merge, so moving a
+  member between them is not reported as a removal. It
   also flags any member the package depends on that disappears.
 - When it reports drift, update this page, decide what the package does about
   it, then accept the new surface with `npm run check:spec -- --update`.

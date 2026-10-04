@@ -83,6 +83,12 @@
           "required AbortSignal signal"
         ]
       },
+      "interface Document": {
+        "declaration": "partial interface Document",
+        "members": [
+          "[SecureContext, SameObject] readonly attribute ModelContext modelContext"
+        ]
+      },
       "interface ModelContext": {
         "declaration": "[Exposed=Window, SecureContext] interface ModelContext : EventTarget",
         "members": [
@@ -106,12 +112,6 @@
         "members": [
           "constructor(DOMString type, optional ToolCancelEventInit eventInitDict = {})",
           "readonly attribute DOMString toolName"
-        ]
-      },
-      "partial interface Document": {
-        "declaration": "partial interface Document",
-        "members": [
-          "[SecureContext, SameObject] readonly attribute ModelContext modelContext"
         ]
       }
     },

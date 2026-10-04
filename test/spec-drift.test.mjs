@@ -51,12 +51,13 @@ test("extracts the WebMCP surface from the spec's IDL blocks", () => {
     "dictionary ToolAnnotations",
     "dictionary ToolCancelEventInit",
     "dictionary ToolExecuteCallbackOptions",
+    "interface Document",
     "interface ModelContext",
     "interface ToolActivatedEvent",
     "interface ToolCancelEvent",
-    "partial interface Document",
   ]);
-  assert.deepEqual(idl["partial interface Document"].members, [
+  assert.equal(idl["interface Document"].declaration, "partial interface Document");
+  assert.deepEqual(idl["interface Document"].members, [
     "[SecureContext, SameObject] readonly attribute ModelContext modelContext",
   ]);
   assert.equal(idl["interface ModelContext"].declaration, "[Exposed=Window, SecureContext] interface ModelContext : EventTarget");
@@ -71,9 +72,13 @@ test("extracts the WebMCP surface from the spec's IDL blocks", () => {
   assert.deepEqual(permissionsPolicyFeatures, ["tools"]);
 });
 
-test("the checked-in snapshot covers everything the package depends on", async () => {
-  assert.deepEqual(missingDependencies(baseline.names), []);
+test("the checked-in snapshot is exactly what the extractor makes of the fixture", async () => {
+  // The fixture is the spec's IDL at the snapshot commit. After
+  // `npm run check:spec -- --update`, refresh the fixture from the same
+  // commit too, or this fails.
   const snapshot = JSON.parse(await readFile(new URL("../spec/webmcp-surface.json", import.meta.url), "utf8"));
+  assert.deepEqual(baseline.surface, snapshot.surface);
+  assert.deepEqual(missingDependencies(baseline.names), []);
   for (const [definition] of PACKAGE_DEPENDENCIES) {
     assert.ok(snapshot.surface.idl[definition], `snapshot is missing ${definition}`);
   }
@@ -93,6 +98,31 @@ test("prose, comments, whitespace and ordering are not drift", () => {
   const blocks = extractIdlBlocks(fixture);
   const reordered = blocks.reverse().map((block) => `<xmp class="idl">${block}</xmp>`).join("\n<p>between</p>\n");
   assert.deepEqual(drift(`${reordered}\n<dfn permission>tools</dfn>`), []);
+});
+
+test("commented-out IDL and definitions are not normative", () => {
+  const commented = fixture
+    .replace(/<xmp class="idl">\npartial interface Document[\s\S]*?<\/xmp>/, (block) => `<!--\n${block}\n-->`)
+    .replace("permission>tools</dfn>", "permission>tools</dfn><!-- <dfn permission>old</dfn> -->");
+  const { surface, names } = extractSurface(commented);
+  assert.equal(surface.idl["interface Document"], undefined);
+  assert.deepEqual(surface.permissionsPolicyFeatures, ["tools"]);
+  assert.deepEqual(
+    missingDependencies(names).map(([definition, member]) => `${definition}.${member}`),
+    ["interface Document.modelContext"],
+  );
+});
+
+test("moving a member into a partial definition is not a missing member", () => {
+  const moved = replaceOnce(fixture, "  required ToolExecuteCallback execute;\n", "")
+    + '\n<xmp class="idl">\npartial dictionary ModelContextTool {\n  required ToolExecuteCallback execute;\n};\n</xmp>\n';
+  const { names } = extractSurface(moved);
+  assert.deepEqual(missingDependencies(names), []);
+  assert.deepEqual(drift(moved), [
+    "~ dictionary ModelContextTool",
+    "    - dictionary ModelContextTool",
+    "    + dictionary ModelContextTool; partial dictionary ModelContextTool",
+  ]);
 });
 
 test("<pre class=idl> with HTML entities parses like <xmp>", () => {
@@ -142,7 +172,7 @@ test("a new definition and a renamed policy feature are drift", () => {
   const changed = replaceOnce(fixture, "permission>tools</dfn>", "permission>webmcp</dfn>")
     + '\n<xmp class="idl">\npartial interface SubmitEvent {\n  readonly attribute boolean agentInvoked;\n};\n</xmp>\n';
   assert.deepEqual(drift(changed), [
-    "+ partial interface SubmitEvent  (added)",
+    "+ interface SubmitEvent  (added)",
     "    + partial interface SubmitEvent",
     "    + readonly attribute boolean agentInvoked",
     "~ permissions-policy features",
@@ -156,7 +186,7 @@ test("moving modelContext back to Navigator flags the package dependency", () =>
   const { names } = extractSurface(changed);
   assert.deepEqual(
     missingDependencies(names).map(([definition, member]) => `${definition}.${member}`),
-    ["partial interface Document.modelContext"],
+    ["interface Document.modelContext"],
   );
 });
 
@@ -233,7 +263,15 @@ test("CLI reports a refused connection as a network failure", async () => {
   assert.match(c.err.join("\n"), /NETWORK FAILURE \(not drift\)/);
 });
 
-test("CLI rejects unknown options", async () => {
-  const c = capture();
-  assert.equal(await main(["--nope"], c.log), EXIT.usage);
+test("CLI rejects unknown options and path-like refs", async () => {
+  for (const args of [["--nope"], ["--ref", "../../other/repo/main"], ["--ref", "main/../x"], ["--ref"]]) {
+    const c = capture();
+    assert.equal(await main(args, c.log), EXIT.usage, args.join(" "));
+  }
+});
+
+test("network failure has its own exit status, distinct from shell and usage errors", () => {
+  assert.equal(EXIT.network, 75);
+  assert.equal(new Set(Object.values(EXIT)).size, Object.keys(EXIT).length);
+  assert.ok(![1, 2, 126, 127].includes(EXIT.network));
 });
