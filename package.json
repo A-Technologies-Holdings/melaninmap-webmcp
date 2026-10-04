@@ -55,11 +55,23 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
     "@playwright/test": "1.63.0",
+    "@types/react": "19.3.0",
     "@typescript/typescript6": "6.0.2",
+    "happy-dom": "20.14.5",
     "publint": "0.3.24",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
     "typescript": "7.0.2",
     "webidl2": "24.5.0",
     "yaml": "2.9.1"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=22"
@@ -69,6 +81,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js",
+      "default": "./dist/react.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js",
+      "default": "./dist/server.js"
     },
     "./schemas/tools": "./schemas/melaninmap.tools.json",
     "./package.json": "./package.json"

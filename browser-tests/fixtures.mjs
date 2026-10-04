@@ -20,15 +20,13 @@ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 /**
  * The envelope code each outcome produces today. Tests assert against this
  * table rather than literals so a deliberate contract change is one edit.
- * SLA-1604 adds a dedicated `busy` decision; when it lands, `overCapacity`
- * becomes "consent_busy" and the over-capacity test needs no other change.
  */
 export const CODES = {
   declined: "consent_declined",
   dismissed: "consent_closed",
   timeout: "consent_timeout",
   cancelled: "tool_cancelled",
-  overCapacity: "consent_closed",
+  overCapacity: "consent_busy",
 };
 
 function installDialogProbe() {

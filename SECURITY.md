@@ -102,6 +102,63 @@ Treat the consent token as what it is: a UI audit signal, not authorization.
 Treat the server proof as what it is too: authorization for one bounded
 operation, not proof of human presence.
 
+#### The proof helpers in this package
+
+`exchangeConsent` and `@melaninmap/webmcp-consent/server` package that same
+exchange so you do not have to write it. Be exact about what you get.
+
+A proof that passes `verifyConsentProof` proves that **your consent endpoint
+issued it, within its lifetime, for this tool, these exact arguments and this
+audience (and subject, if you bind one), and that it had not been used
+before.** That is worth having:
+
+- the action endpoint stops accepting a bare "consent: yes" field, which
+  closes the direct-writer bypass;
+- authorization binds to one exact operation — a proof minted for "hold 2
+  tickets to event A" fails as `wrong_args` against "hold 200" or "event B",
+  and as `replayed` the second time;
+- the consent endpoint becomes the one place to rate limit the work.
+
+It does **not** prove a human was present. The consent endpoint cannot see the
+page. A script running in the same browser session can call it with exactly
+the inputs the page would send and receive a perfectly valid proof. The proof
+moves the trust question to your consent endpoint; it does not answer it. If
+that endpoint mints a proof for anyone who asks, you have built a slower bare
+consent field.
+
+What the helpers cannot do for you:
+
+- **The consent endpoint is the control.** It receives the tool name and the
+  exact arguments. Allowlist the tools it will sign for, cap the arguments,
+  check the session, rate limit it. An endpoint that signs whatever it is sent
+  is a bare consent field with extra steps.
+- **Single use is your storage.** `consume(nonce, expiresAt)` is required and
+  must insert-if-absent atomically. A read-then-write two requests can
+  interleave accepts a proof twice. Keep the record at least until
+  `expiresAt`; it already includes margin for skew between verifiers.
+- **Without a subject, a proof is a bearer token.** One leaked from user A can
+  be spent by user B for the same operation, once. Pass the session or account
+  id as `subject` on both sides when the action is per-user.
+- **The secret stays on the server and does one job.** At least 32 random
+  bytes, used for nothing but consent proofs (rotate by passing a short list
+  to `verifyConsentProof`). A secret in a browser bundle lets anyone mint
+  proofs. Use a distinct `audience` per endpoint and per environment so a
+  staging proof is worthless in production.
+- **Digest on the server.** Pass `args` to both `signConsentProof` and
+  `verifyConsentProof` and let them compute the digest. Never take a digest
+  from the client.
+- **Do not echo the failure reason.** Log it; answer the client with one
+  undifferentiated 403.
+- **Everything in "Put the security boundary where the server can verify
+  something" above still applies.** Server-minted state, a destination
+  allowlist, rate limits keyed on what the caller cannot rotate, and no money
+  or personal data on this path.
+
+The MAC comparison avoids early exits, but JavaScript makes no hard
+constant-time guarantee. Expiry tolerates five seconds of clock skew, and
+lifetimes are capped at ten minutes. Proofs are meant to be spent within
+seconds.
+
 ### 3. Attribution poisoning
 
 If your tools write analytics, someone will write junk into them. For us this

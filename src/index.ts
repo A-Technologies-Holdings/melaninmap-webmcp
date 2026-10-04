@@ -6,16 +6,30 @@ export {
   type ConsentResult,
   type ConsentSurface,
 } from "./consent.js";
+export { argsDigest } from "./digest.js";
 export {
+  CONSENT_EXCHANGE_TIMEOUT_MS,
   defineConsequentialTool,
   defineReadTool,
   toToolResult,
   type ConsentConfirmation,
+  type ConsentDecisionRecord,
+  type ConsentExchange,
+  type ConsentExchangeRequest,
   type ConsequentialToolSpec,
+  type DecisionObserver,
   type ErrorMapper,
   type ToolFailure,
   type ToolSpec,
 } from "./defineTool.js";
+export {
+  CONSENT_QUEUE_DEFAULT_CAPACITY,
+  createConsentQueue,
+  type ConsentConfirmEvent,
+  type ConsentQueue,
+  type ConsentQueueOptions,
+  type DisplayedConsentRequest,
+} from "./queue.js";
 export {
   detectModelContext,
   registerAgentTools,

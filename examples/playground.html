@@ -69,7 +69,7 @@ code { font: 0.875em/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
   <header class="hero">
     <p class="kicker">@melaninmap/webmcp-consent</p>
     <h1>Consent playground</h1>
-    <p>An agent asks; a person decides. The demonstration tool below changes only a counter on this page. Confirm it, decline it, press Escape, let it expire, or cancel the call mid-prompt, and watch the result envelope the agent receives.</p>
+    <p>An agent asks; a person decides. The demonstration tool below changes only a counter on this page. Confirm it, decline it, press Escape, let it expire, cancel the call mid-prompt, or overfill the queue, and watch the result envelope the agent receives.</p>
   </header>
 
   <div class="grid">
@@ -88,9 +88,9 @@ code { font: 0.875em/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
       <section class="panel controls" aria-labelledby="try-heading">
         <h2 id="try-heading">Try it</h2>
         <button id="start" class="primary" type="button">Request counter update</button>
-        <button id="burst" type="button">Fire three requests at once</button>
+        <button id="burst" type="button">Fire four requests at once</button>
         <button id="cancel" type="button">Request, then cancel after 1s</button>
-        <p class="hint">Three at once shows queuing: one dialog at a time, never a stack. The five-second deadline includes time spent in the queue.</p>
+        <p class="hint">Four at once shows queuing: one dialog at a time, never a stack, and at most three held. The fourth is refused as busy without being shown. The five-second deadline includes time spent in the queue.</p>
       </section>
 
       <section class="panel counter" aria-labelledby="count-heading">
@@ -139,6 +139,7 @@ function describe(envelope) {
     consent_declined: ['Declined', 'stop'],
     consent_closed: ['Dismissed', 'stop'],
     consent_timeout: ['Expired', 'warn'],
+    consent_busy: ['Busy', 'warn'],
     tool_cancelled: ['Cancelled', 'warn'],
   };
   return labels[envelope?.code] ?? [envelope?.code ?? 'Unknown', 'warn'];
@@ -170,7 +171,7 @@ async function run(cancelAfterMs) {
 }
 
 document.getElementById('start').addEventListener('click', () => run());
-document.getElementById('burst').addEventListener('click', () => { run(); run(); run(); });
+document.getElementById('burst').addEventListener('click', () => { run(); run(); run(); run(); });
 document.getElementById('cancel').addEventListener('click', () => run(1000));
 
 const registration = document.getElementById('registration');

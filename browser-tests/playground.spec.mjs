@@ -133,8 +133,13 @@ test.describe("consent playground in a real browser", () => {
     expect((await dialogProbe(page)).shown).toEqual([TITLE]);
   });
 
-  test("a burst of three shows one dialog at a time and resolves in order", async ({ page }) => {
+  test("a burst of four shows one dialog at a time, refuses the fourth as busy, and resolves in order", async ({ page }) => {
     await page.locator("#burst").click();
+
+    // The queue holds three; the fourth is refused at once, before any answer.
+    const [busy] = await playgroundResults(page, 1);
+    expect(busy.call).toBe("Call 4");
+    expect(busy.envelope).toMatchObject({ ok: false, code: CODES.overCapacity });
 
     const first = await nextDialogId(page);
     await expect(consentDialog(page)).toHaveCount(1);
@@ -150,7 +155,7 @@ test.describe("consent playground in a real browser", () => {
     await page.keyboard.press("Escape");
     await expect(consentDialog(page)).toHaveCount(0);
 
-    const results = await playgroundResults(page, 3);
+    const results = (await playgroundResults(page, 4)).slice(1);
     expect(results.map(({ call }) => call)).toEqual(["Call 1", "Call 2", "Call 3"]);
     expect(results[0].envelope).toEqual({ ok: true, count: 1 });
     expect(results[1].envelope).toMatchObject({ ok: false, code: CODES.declined });
