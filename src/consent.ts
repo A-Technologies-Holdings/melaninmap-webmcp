@@ -35,7 +35,22 @@
  * See SECURITY.md for the full threat model.
  */
 
-export type ConsentDecision = "confirmed" | "declined" | "timeout" | "closed";
+/**
+ * How a consent request ended.
+ *
+ * `busy` is distinct from `closed` on purpose. `closed` means a prompt was
+ * dismissed (or could not be shown at all) and the model should not retry.
+ * `busy` means the surface is already showing — or holding as many as it will
+ * hold of — other confirmations, so THIS request was never shown. The person
+ * has not said no to it. An agent that cannot tell the two apart either gives
+ * up on an action nobody refused or retries a dismissal in a loop.
+ */
+export type ConsentDecision =
+  | "confirmed"
+  | "declined"
+  | "timeout"
+  | "closed"
+  | "busy";
 
 export type ConsentRequest = {
   /** Short human sentence: the action, named plainly. */
@@ -65,7 +80,7 @@ export type ConsentResult =
        */
       auditToken?: string;
     }
-  | { decision: "declined" | "timeout" | "closed" };
+  | { decision: "declined" | "timeout" | "closed" | "busy" };
 
 /**
  * A consent surface. Implement this over whatever your page already uses for
@@ -76,6 +91,9 @@ export type ConsentResult =
  * - MUST require a distinct affirmative interaction (not a dismiss).
  * - MUST resolve exactly once, and MUST resolve on timeout rather than hang.
  * - MUST NOT be callable by a tool without producing a visible surface.
+ * - MAY resolve without showing anything only with a refusal: `busy` when it
+ *   cannot take another request, `closed` when the request is already
+ *   cancelled or cannot be shown. Never `confirmed`.
  */
 export type ConsentSurface = (
   request: ConsentRequest,
@@ -92,11 +110,25 @@ export function consentRefusal(
   code: string;
   message: string;
 } {
-  const message =
-    decision === "declined"
-      ? "The person declined this action. Do not retry it. Ask what they would prefer instead."
-      : decision === "timeout"
-        ? "The confirmation prompt timed out with no answer. Do not retry automatically."
-        : "The confirmation prompt was dismissed without an answer. Do not retry automatically.";
-  return { ok: false, code: `consent_${decision}`, message };
+  // An exhaustive table rather than a ternary chain, so a future decision is
+  // a type error here instead of silently borrowing the last branch's words.
+  const messages: Record<Exclude<ConsentDecision, "confirmed">, string> = {
+    declined:
+      "The person declined this action. Do not retry it. Ask what they would prefer instead.",
+    timeout:
+      "The confirmation prompt timed out with no answer. Do not retry automatically.",
+    closed:
+      "The confirmation prompt was dismissed without an answer. Do not retry automatically.",
+    // Never shown, so never refused: the one refusal that permits a retry —
+    // once, later, after the open confirmation has been answered.
+    busy:
+      "Another confirmation is already open for this person, so this request was not shown. " +
+      "Wait for that one to be answered; you may then retry this action once. Do not retry in a loop.",
+  };
+  // A plain-JavaScript caller can pass anything. An unknown decision must not
+  // leak into the code as `consent_yes`: it is a dismissal, like any other
+  // answer the gate cannot read.
+  const known = Object.prototype.hasOwnProperty.call(messages, decision);
+  const safe = known ? decision : "closed";
+  return { ok: false, code: `consent_${safe}`, message: messages[safe] };
 }

@@ -5,6 +5,48 @@ project follows the compatibility contract in [CONTRIBUTING.md](./CONTRIBUTING.m
 published tool names and schemas are stable surfaces and only change on a new
 versioned path.
 
+## [Unreleased]
+
+- **`busy` consent decision.** `ConsentDecision` and `ConsentResult` gain
+  `"busy"`, and `consentRefusal("busy")` returns `consent_busy` with a message
+  telling the model another confirmation is already open and it may retry
+  once, later. A surface that cannot take another request now says so instead
+  of reporting `closed`, so an agent can tell "never shown" from "dismissed".
+  **Type change:** an exhaustive `switch` over `ConsentDecision` (or over a
+  refusal's `decision`) gains a case and will fail to typecheck until it
+  handles `"busy"`.
+- `consentRefusal` given a decision it does not know (plain JavaScript)
+  returns the `consent_closed` envelope instead of leaking the value into the
+  code.
+- **`onDecision`** on `defineConsequentialTool`: an observer called exactly
+  once per call that reached the gate with `{ toolName, decision, elapsedMs }`
+  (`decision` includes `"cancelled"` when the host aborts an open prompt).
+  Never awaited; throws and rejections are swallowed; no arguments or tokens
+  in the record. New exported types `ConsentDecisionRecord` and
+  `DecisionObserver`.
+- **`createConsentQueue`**: a framework-agnostic consent store implementing
+  `ConsentSurface` — one displayed request at a time, a bounded queue
+  answering `busy` when full (default capacity 3), deadlines counted from
+  enqueue, abort support, and every confirm/decline/dismiss bound to the
+  displayed request id (a stale answer is ignored and returns `false`).
+  Confirm requires a trusted event (read from `nativeEvent` when present).
+  Pass `queue.surface` as a tool's `consent`; `subscribe`/`getSnapshot` serve
+  UI bindings. Generalizes `reference/consentBridge.ts`.
+- **`@melaninmap/webmcp-consent/react`**: `useConsentQueue(queue)`, a
+  `useSyncExternalStore` hook returning the displayed request plus
+  `confirm(event)` / `decline()` / `dismiss()` bound to it, and
+  `bindConsentAnswers` for bindings that subscribe another way. React (>= 18) is an
+  optional peer dependency; the package root still has no dependencies and
+  never imports React.
+- `examples/domConsentSurface` is rebuilt on `createConsentQueue` (less
+  code; focus, ids, dismissal and trusted-click behavior unchanged). It
+  resolves `busy` instead of `closed` when its three-prompt queue is full, and
+  a dialog that cannot be built or opened now resolves `closed` at once
+  instead of blocking the queue. The playground fires four requests to show
+  `busy`.
+- `tsconfig.json` sets `"types": []`, so the library is typechecked without
+  Node or test-tooling globals leaking in.
+
 ## [1.0.0] - 2026-10-03
 
 First public release.

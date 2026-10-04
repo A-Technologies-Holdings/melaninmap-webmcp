@@ -339,7 +339,9 @@ test("prompt backlog is bounded and cancellation removes the active dialog", asy
   const first = domConsentSurface(request, { signal: controller.signal });
   const second = domConsentSurface({ ...request, timeoutMs: 20 });
   const third = domConsentSurface({ ...request, timeoutMs: 20 });
-  assert.deepEqual(await domConsentSurface(request), { decision: "closed" });
+  // A fourth request is not shown and not refused by anyone: it is `busy`,
+  // which the model can tell apart from a dismissal.
+  assert.deepEqual(await domConsentSurface(request), { decision: "busy" });
   await tick();
   controller.abort();
   assert.deepEqual(await first, { decision: "closed" });
@@ -364,4 +366,69 @@ test("an expired queued prompt frees its slot while an earlier prompt is open", 
   declineButton(dialogs[0]).click();
   assert.deepEqual(await first, { decision: "declined" });
   await tick();
+});
+
+// #12, in the DOM: a dialog that has been replaced is gone from the page, but
+// its buttons and listeners still exist. Nothing done to them may answer the
+// request that replaced it.
+test("a replaced dialog's controls cannot answer the next request", async () => {
+  reset();
+  const first = domConsentSurface(request);
+  const second = domConsentSurface(request);
+  await tick();
+  const old = dialogs[0];
+  declineButton(old).click();
+  assert.deepEqual(await first, { decision: "declined" });
+  await tick();
+  assert.equal(old.removed, true);
+  assert.equal(dialogs.length, 2);
+  confirmButton(old).click();
+  old.dispatch("cancel");
+  old.dispatch("click", { target: old, clientX: 20, clientY: 20 });
+  old.close();
+  assert.equal(dialogs[1].open, true, "the next request is still waiting for its person");
+  declineButton(dialogs[1]).click();
+  assert.deepEqual(await second, { decision: "declined" });
+});
+
+test("a dialog that cannot open resolves closed and the next request still shows", async () => {
+  reset();
+  const original = FakeDialog.prototype.showModal;
+  FakeDialog.prototype.showModal = function () { throw new Error("not allowed"); };
+  let first;
+  try {
+    first = domConsentSurface(request);
+    await tick();
+  } finally {
+    FakeDialog.prototype.showModal = original;
+  }
+  assert.deepEqual(await first, { decision: "closed" });
+  assert.equal(dialogs[0].removed, true);
+  const second = domConsentSurface(request);
+  await tick();
+  assert.equal(dialogs[1].open, true);
+  declineButton(dialogs[1]).click();
+  assert.deepEqual(await second, { decision: "declined" });
+});
+
+// No <body> yet (a surface called before the document finished parsing) must
+// not leave a request "displayed" with nothing on screen until it times out.
+test("a dialog that cannot even be mounted resolves closed at once", async () => {
+  reset();
+  const body = document.body;
+  document.body = null;
+  let first;
+  try {
+    first = domConsentSurface({ ...request, timeoutMs: 5000 });
+  } finally {
+    document.body = body;
+  }
+  const started = Date.now();
+  assert.deepEqual(await first, { decision: "closed" });
+  assert.ok(Date.now() - started < 1000, "it must not wait for the deadline");
+  const second = domConsentSurface(request);
+  await tick();
+  assert.equal(dialogs.at(-1).open, true);
+  declineButton(dialogs.at(-1)).click();
+  assert.deepEqual(await second, { decision: "declined" });
 });
