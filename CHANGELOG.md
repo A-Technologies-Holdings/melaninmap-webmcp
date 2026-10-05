@@ -7,6 +7,11 @@ versioned path.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-05
+
+The first release published to npm. 1.0.0 below was prepared and dated but
+never published; its changes ship in this release.
+
 - **Host detection prefers `document.modelContext`.** The spec moved the
   API from `Navigator` to `Document`, and Chrome 152 and later expose it only
   there. `navigator.modelContext` is still used when `document` has no
