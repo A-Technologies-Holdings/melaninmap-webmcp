@@ -64,7 +64,8 @@ function detectModelContext(): DetectedModelContext | null {
     typeof document !== "undefined"
       ? (document as Document & { modelContext?: unknown }).modelContext
       : undefined;
-  const candidate = fromNavigator ?? fromDocument;
+  // Spec location first; navigator.modelContext is the pre-2026-05 alias.
+  const candidate = fromDocument ?? fromNavigator;
   if (typeof candidate !== "object" || candidate === null) return null;
 
   const host = candidate as Record<string, unknown>;

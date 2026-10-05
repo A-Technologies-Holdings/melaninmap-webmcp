@@ -38,7 +38,7 @@ from reading Chromium's source history and were not executed; they are marked
 
 | API point | Spec (`d61d0e6`) | Package 1.0.0 | Chrome |
 | --- | --- | --- | --- |
-| Entry point | `document.modelContext`, `[SecureContext, SameObject]`. `navigator.modelContext` was removed in `c7b5c702`. `window.modelContext` never existed in IDL. | `detectHost()` checks `navigator.modelContext` **first**, then `document.modelContext` (`register.ts`). | 153: `document.modelContext` only; `navigator.modelContext` is `undefined`. (source) `navigator` only in 146 to 149, both in 150 and 151 (the `navigator` one logs a deprecation warning), `document` only from 152. |
+| Entry point | `document.modelContext`, `[SecureContext, SameObject]`. `navigator.modelContext` was removed in `c7b5c702`. `window.modelContext` never existed in IDL. | `detectHost()` checks `document.modelContext` first, then `navigator.modelContext` (`register.ts`). **Aligned** since the 2026-10-04 follow-up. | 153: `document.modelContext` only; `navigator.modelContext` is `undefined`. (source) `navigator` only in 146 to 149, both in 150 and 151 (the `navigator` one logs a deprecation warning), `document` only from 152. |
 | `registerTool(tool, options)` | Returns `Promise<undefined>` (`ec37ec48`). Rejects on a duplicate name, an invalid name or empty description, a schema that does not serialize, `NotAllowedError` without the `tools` permissions policy, and an already-aborted signal. | `registerAgentToolsAsync` awaits it. Sync `registerAgentTools` treats a thenable as `async_registration_pending` (`registered: false`) and keeps the names reserved. | 153: returns a promise, rejecting with `InvalidStateError` ("Duplicate tool name", "Invalid tool name"). |
 | Registration options | `{ signal?: AbortSignal, exposedTo?: sequence<USVString> }`. Abort unregisters. | Forwards `{ signal }` only. Never forwards its own `scope`. | HEAD IDL matches the spec. |
 | `unregisterTool(name)` | Removed (`6708e339`); abort the registration signal instead. | Not used. | (source) Removed in 148. |
@@ -54,10 +54,17 @@ from reading Chromium's source history and were not executed; they are marked
 
 ## Recommended changes
 
-None of these are made in this PR. `src/` is being changed in parallel for
-SLA-1604 and SLA-1605, and nothing below is a failure of the consent gate itself.
-The gate holds on Chrome 153's real WebMCP: no confirm without a trusted click,
-and cancellation unmounts the dialog. Each item is listed for follow-up.
+None of these were made in the SLA-1606 PR, because `src/` was changing in
+parallel for SLA-1604 and SLA-1605. Nothing below is a failure of the consent
+gate itself. The gate holds on Chrome 153's real WebMCP: no confirm without a
+trusted click, and cancellation unmounts the dialog.
+
+**Status, 2026-10-04 follow-up:** done — "Breaks us now" 1 (rejected
+reservations are released; the README steers callers to the async API) and
+"Will break us" 1, 2 (documented as legacy), 5 and 6. Still open — "Breaks us
+now" 2 (needs a public result-style API and a minor release), "Will break us"
+3 (validating names at definition time is a behavior change for existing
+callers) and 4 (tracked by the browser suite).
 
 ### Breaks us now
 

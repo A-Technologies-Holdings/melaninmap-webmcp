@@ -287,7 +287,18 @@ only the bulk `provideContext` style *replaces* the page's tool set on every
 call, so scopes there cannot be independent: the first scope to register owns
 the page, and a different scope gets `{ registered: false, reason:
 "bulk_conflict" }` instead of silently erasing the first scope's tools. The bulk
-style takes no `{ signal }`, so its tools live for the page.
+style takes no `{ signal }`, so its tools live for the page. `provideContext` was
+removed from the spec and from Chrome 147; only older polyfills reach this path,
+and it will be dropped in the next major version.
+
+The host is looked up at `document.modelContext` first, where the spec and
+Chrome 152 and later expose it, then at the older `navigator.modelContext`.
+
+Tools registered from a cross-origin iframe need the embedder's permission:
+the WebMCP `tools` permissions-policy feature defaults to `'self'`, so the
+embedding page must grant it (`<iframe allow="tools" …>`). Without it the
+browser rejects `registerTool()` with `NotAllowedError`, which
+`registerAgentToolsAsync` reports as `unsupported`.
 
 ## Writing tool descriptions
 
@@ -549,7 +560,13 @@ optional-feature failures and cannot break the page.
 
 For promise-based browser registration, use `await registerAgentToolsAsync(tools)`.
 It waits for acceptance and reports partial failures without retrying rejected host calls.
+A signal that aborts while the browser is still registering reports `aborted`.
 `registerAgentTools` remains the synchronous compatibility API for older prototypes.
+Every current WebMCP browser returns a promise from `registerTool()`, so the sync
+API answers `async_registration_pending` whether or not the browser accepted the
+tools; prefer the async API. When the browser rejects a registration, the sync
+API hands the reservation back once the rejection arrives, so a later retry is
+not refused as `already_registered`.
 
 To try the local consent playground, run `npm run build && npm run build:test`,
 then `python3 -m http.server 8080` from a clone of this repository (the playground
