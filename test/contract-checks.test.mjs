@@ -21,11 +21,14 @@ function check(root, script, env = {}) {
 }
 
 test('OpenAPI check rejects a stale tool name while accepting refusal codes', () => fixture((root) => {
-  assert.equal(check(root, 'check-openapi-pointers.mjs').status, 0);
+  // Child output in the messages: this test failed once without it, and the
+  // exit status alone could not say why.
+  const clean = check(root, 'check-openapi-pointers.mjs');
+  assert.equal(clean.status, 0, `${clean.error ?? ''}\n${clean.signal ?? ''}\n${clean.stdout}\n${clean.stderr}`);
   const path = join(root, 'schemas/openapi.yaml');
   writeFileSync(path, readFileSync(path, 'utf8').replaceAll('check_ownership_verification', 'check_verification_status'));
   const result = check(root, 'check-openapi-pointers.mjs');
-  assert.equal(result.status, 1);
+  assert.equal(result.status, 1, `${result.error ?? ''}\n${result.signal ?? ''}\n${result.stdout}\n${result.stderr}`);
   assert.match(result.stderr, /schemas name a tool the contract does not define: check_verification_status/);
 }));
 

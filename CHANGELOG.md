@@ -20,6 +20,22 @@ versioned path.
 - `registerAgentToolsAsync` reports `aborted`, not `unsupported` or
   `partial_registration`, when the caller's signal aborts while the browser is
   still registering, and frees the names so a remount can register them.
+- **`resultFormat: "json"`** on `defineReadTool` and `defineConsequentialTool`
+  resolves the result value itself instead of the MCP content envelope. Spec
+  WebMCP hosts JSON-serialize what `execute` resolves, so with the default the
+  agent received the envelope double-encoded inside a wrapper; with `"json"` a
+  refusal arrives as `{ ok: false, code, message }` (verified against Chrome
+  153's WebMCP). The default is unchanged. New exports `toJsonResult` and
+  `ToolResultFormat`; `ModelContextTool` gains a `Result` type parameter
+  (default `ModelContextToolResult`, so existing code is unaffected), and the
+  registrar types accept `ModelContextTool<unknown>`.
+- **Registration validates tools first.** `registerAgentTools` and
+  `registerAgentToolsAsync` refuse the whole set with `{ registered: false,
+  reason: "invalid_tool", toolName }` when a name falls outside the spec's
+  `[A-Za-z0-9_.-]{1,128}` or a description is empty, before touching the host
+  and on every browser. **Behavior and type change:** such a tool previously
+  registered on permissive polyfills; spec browsers already rejected it. An
+  exhaustive `switch` over `RegisterResult["reason"]` gains a case.
 - README: the bulk `provideContext` path is legacy (removed from the spec and
   Chrome 147); cross-origin iframes need `allow="tools"`; prefer
   `registerAgentToolsAsync` on every current browser.

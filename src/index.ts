@@ -11,6 +11,7 @@ export {
   CONSENT_EXCHANGE_TIMEOUT_MS,
   defineConsequentialTool,
   defineReadTool,
+  toJsonResult,
   toToolResult,
   type ConsentConfirmation,
   type ConsentDecisionRecord,
@@ -20,6 +21,7 @@ export {
   type DecisionObserver,
   type ErrorMapper,
   type ToolFailure,
+  type ToolResultFormat,
   type ToolSpec,
 } from "./defineTool.js";
 export {

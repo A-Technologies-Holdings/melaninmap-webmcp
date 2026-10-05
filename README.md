@@ -164,6 +164,19 @@ an instruction the model can act on:
 it". A surface resolves `busy` instead of showing anything when it is already
 holding as many requests as it will hold.
 
+### Result format
+
+By default a tool resolves an MCP-style result, `{ content: [{ type: "text",
+text: "<JSON>" }] }`. A spec WebMCP browser JSON-serializes whatever `execute`
+resolves to, so there the agent gets that wrapper with the envelope inside it
+as an escaped string, and has to unwrap it to read "Do not retry". Pass
+`resultFormat: "json"` to `defineReadTool` or `defineConsequentialTool` to
+resolve the JSON value itself. The agent then reads `{ "ok": false, "code":
+"consent_declined", ... }` in one parse. Values that do not serialize still
+become `null`. Keep the default for MCP-style polyfills and bridges that expect
+content blocks. A tool defined with `"json"` is typed `ModelContextTool<unknown>`,
+and `toJsonResult` is exported for hand-written tools.
+
 ### Logging decisions
 
 Pass `onDecision` to a consequential tool to feed your own confirmation log:
@@ -293,6 +306,13 @@ and it will be dropped in the next major version.
 
 The host is looked up at `document.modelContext` first, where the spec and
 Chrome 152 and later expose it, then at the older `navigator.modelContext`.
+
+Both registration functions check every tool against the spec's rules before
+touching the host: a name of 1 to 128 characters from `[A-Za-z0-9_.-]` and a
+non-empty description. A tool that breaks them makes the whole call return
+`{ registered: false, reason: "invalid_tool", toolName }` on every browser,
+including ones without WebMCP. Nothing registers, so you find the mistake in
+development rather than in a browser that quietly refused it.
 
 Tools registered from a cross-origin iframe need the embedder's permission:
 the WebMCP `tools` permissions-policy feature defaults to `'self'`, so the

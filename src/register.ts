@@ -47,7 +47,7 @@ function stateFor(identity: object): HostState {
   } catch { /* Locked legacy globals must not throw into the page. */ }
   return state;
 }
-function registrationScope(tools: readonly ModelContextTool[], options?: RegisterAgentToolsOptions): string {
+function registrationScope(tools: readonly ModelContextTool<unknown>[], options?: RegisterAgentToolsOptions): string {
   return options?.scope || JSON.stringify([...new Set(tools.map(tool => tool.name))].sort());
 }
 function markRegistered(state: HostState, scope: string, names: string[]): void {
@@ -101,6 +101,31 @@ function releaseOnRejection(
       if (state.bulkOwner === reservation.scope) delete state.bulkOwner;
     }
   }).catch(() => undefined);
+}
+
+/**
+ * The spec's tool-name rule: 1 to 128 characters of `[A-Za-z0-9_.-]`. The
+ * browser rejects anything else, and so does an empty description.
+ */
+const TOOL_NAME = /^[A-Za-z0-9_.-]{1,128}$/;
+/**
+ * The first tool the browser would refuse, checked before anything reaches
+ * the host. Caught here, the mistake fails the same way on every browser and
+ * never leaves half a set registered.
+ */
+function firstInvalidTool(tools: readonly ModelContextTool<unknown>[]): string | null {
+  for (const tool of tools) {
+    let name: unknown;
+    let description: unknown;
+    try {
+      ({ name, description } = tool);
+    } catch {
+      return "";
+    }
+    if (typeof name !== "string" || !TOOL_NAME.test(name)) return typeof name === "string" ? name : "";
+    if (typeof description !== "string" || description.trim() === "") return name;
+  }
+  return null;
 }
 
 /** Narrow one candidate host object, or null if it registers nothing. */
@@ -191,6 +216,15 @@ export type RegisterResult =
       reason: "partial_registration";
       toolCount: number;
     }
+  | {
+      registered: false;
+      /**
+       * A tool name outside `[A-Za-z0-9_.-]{1,128}`, or an empty description.
+       * Nothing was registered. `toolName` is the first offending name.
+       */
+      reason: "invalid_tool";
+      toolName: string;
+    }
   | { registered: true; toolCount: number; style: "bulk" | "incremental" };
 
 /**
@@ -200,7 +234,7 @@ export type RegisterResult =
  * registrar at all.
  */
 export function registerAgentTools(
-  tools: readonly ModelContextTool[],
+  tools: readonly ModelContextTool<unknown>[],
   options?: RegisterAgentToolsOptions,
 ): RegisterResult {
   // A signal that has already fired means the caller's scope is gone before we
@@ -209,6 +243,8 @@ export function registerAgentTools(
   if (options?.signal?.aborted) {
     return { registered: false, reason: "aborted" };
   }
+  const invalid = firstInvalidTool(tools);
+  if (invalid !== null) return { registered: false, reason: "invalid_tool", toolName: invalid };
 
   const host = detectHost();
   if (!host) return { registered: false, reason: "unsupported" };
@@ -344,10 +380,12 @@ export function registerAgentTools(
  * Rejections are surfaced without retrying a possibly consequential host call.
  */
 export async function registerAgentToolsAsync(
-  tools: readonly ModelContextTool[],
+  tools: readonly ModelContextTool<unknown>[],
   options?: RegisterAgentToolsOptions,
 ): Promise<RegisterResult> {
   if (options?.signal?.aborted) return { registered: false, reason: "aborted" };
+  const invalid = firstInvalidTool(tools);
+  if (invalid !== null) return { registered: false, reason: "invalid_tool", toolName: invalid };
   const host = detectHost();
   if (!host) return { registered: false, reason: "unsupported" };
   const state = stateFor(host.identity);

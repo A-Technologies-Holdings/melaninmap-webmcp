@@ -57,6 +57,34 @@ export function toToolResult(value: unknown): ModelContextToolResult {
   };
 }
 
+/**
+ * The tool result as a plain JSON value, for hosts that serialize whatever
+ * `execute` resolves to (the WebMCP spec and Chrome). Same serialization and
+ * the same `null` fallback as `toToolResult`, without the content wrapper, so
+ * the model reads `{ "ok": false, "code": ... }` directly instead of an
+ * escaped string inside an envelope.
+ */
+export function toJsonResult(value: unknown): unknown {
+  return JSON.parse(toToolResult(value).content[0]!.text) as unknown;
+}
+
+/**
+ * How a defined tool's `execute` resolves.
+ *
+ * - `"mcp"` (default): `{ content: [{ type: "text", text: <JSON> }] }`, the
+ *   MCP tool-result shape. Right for MCP-style polyfills and bridges.
+ * - `"json"`: the JSON value itself. Right for spec WebMCP hosts, which
+ *   JSON-serialize the resolved value for the agent; with `"mcp"` the agent
+ *   there receives the envelope with the result double-encoded inside it.
+ */
+export type ToolResultFormat = "mcp" | "json";
+
+function resultEncoder(format: unknown): (value: unknown) => unknown {
+  // Read once, at definition. Anything but "json" (including a typo from
+  // plain JavaScript) keeps the long-standing envelope.
+  return format === "json" ? toJsonResult : toToolResult;
+}
+
 const CANCELLED = {
   ok: false, code: "tool_cancelled",
   message: "The tool call was cancelled. Do not retry automatically.",
@@ -192,6 +220,8 @@ export type ToolSpec<Args> = {
   parseArgs: (raw: Record<string, unknown>) => Args | null;
   execute: (args: Args, options: ToolExecutionOptions) => Promise<unknown>;
   mapError?: ErrorMapper;
+  /** How `execute` resolves. See `ToolResultFormat`. Defaults to `"mcp"`. */
+  resultFormat?: ToolResultFormat;
 };
 
 const INVALID_ARGUMENTS: ToolFailure = {
@@ -233,8 +263,12 @@ function safeParseArgs<Args>(
 }
 
 /** A read-only tool. No consent gate — reads have no consequence to confirm. */
-export function defineReadTool<Args>(spec: ToolSpec<Args>): ModelContextTool {
+export function defineReadTool<Args>(spec: ToolSpec<Args> & { resultFormat: "json" }): ModelContextTool<unknown>;
+export function defineReadTool<Args>(spec: ToolSpec<Args> & { resultFormat?: "mcp" }): ModelContextTool;
+export function defineReadTool<Args>(spec: ToolSpec<Args>): ModelContextTool<unknown>;
+export function defineReadTool<Args>(spec: ToolSpec<Args>): ModelContextTool<unknown> {
   const mapError = spec.mapError ?? defaultErrorMapper;
+  const encode = resultEncoder(spec.resultFormat);
   return {
     name: spec.name,
     description: spec.description,
@@ -245,16 +279,16 @@ export function defineReadTool<Args>(spec: ToolSpec<Args>): ModelContextTool {
     annotations: { ...spec.annotations, readOnlyHint: true },
     execute: async (raw, hostOptions) => {
       const options = executionOptions(hostOptions);
-      if (isAborted(options.signal)) return toToolResult(CANCELLED);
+      if (isAborted(options.signal)) return encode(CANCELLED);
       const args = safeParseArgs(spec.parseArgs, raw);
-      if (args === null) return toToolResult(INVALID_ARGUMENTS);
+      if (args === null) return encode(INVALID_ARGUMENTS);
       try {
-        return toToolResult(await spec.execute(args, options));
+        return encode(await spec.execute(args, options));
       } catch (error) {
         // A handler that forwards the signal to fetch rejects with an abort
         // error. That is a cancellation, not an unavailable tool.
-        if (isAborted(options.signal)) return toToolResult(CANCELLED);
-        return toToolResult(safeMapError(mapError, error));
+        if (isAborted(options.signal)) return encode(CANCELLED);
+        return encode(safeMapError(mapError, error));
       }
     },
   };
@@ -567,9 +601,19 @@ function normalizeConsentResult(value: unknown): ConsentResult {
  * find yourself wanting one, what you actually want is a read tool.
  */
 export function defineConsequentialTool<Args>(
+  spec: ConsequentialToolSpec<Args> & { resultFormat: "json" },
+): ModelContextTool<unknown>;
+export function defineConsequentialTool<Args>(
+  spec: ConsequentialToolSpec<Args> & { resultFormat?: "mcp" },
+): ModelContextTool;
+export function defineConsequentialTool<Args>(
   spec: ConsequentialToolSpec<Args>,
-): ModelContextTool {
+): ModelContextTool<unknown>;
+export function defineConsequentialTool<Args>(
+  spec: ConsequentialToolSpec<Args>,
+): ModelContextTool<unknown> {
   const mapError = spec.mapError ?? defaultErrorMapper;
+  const encode = resultEncoder(spec.resultFormat);
   // Read once, at definition: the name in a decision record is then the name
   // the host registered, and an observer or exchange behind a throwing getter
   // fails here, where it is written, instead of rejecting a tool call into
@@ -584,9 +628,9 @@ export function defineConsequentialTool<Args>(
     annotations: { ...spec.annotations, readOnlyHint: false, consequentialHint: true },
     execute: async (raw, hostOptions) => {
       const options = executionOptions(hostOptions);
-      if (isAborted(options.signal)) return toToolResult(CANCELLED);
+      if (isAborted(options.signal)) return encode(CANCELLED);
       const args = safeParseArgs(spec.parseArgs, raw);
-      if (args === null) return toToolResult(INVALID_ARGUMENTS);
+      if (args === null) return encode(INVALID_ARGUMENTS);
 
       // With an exchange, pin the arguments before anyone is asked. Digesting
       // after the confirmation would let a person confirm a call that can
@@ -596,14 +640,14 @@ export function defineConsequentialTool<Args>(
       if (exchange !== undefined) {
         // A configured exchange that is not callable is a gate that cannot
         // verify. Fail closed rather than quietly skipping the step.
-        if (typeof exchange !== "function") return toToolResult(UNVERIFIABLE);
+        if (typeof exchange !== "function") return encode(UNVERIFIABLE);
         let text: string;
         try { text = canonicalArgs(args); }
-        catch { return toToolResult(INVALID_ARGUMENTS); }
+        catch { return encode(INVALID_ARGUMENTS); }
         const snapshot = deepFreeze(JSON.parse(text) as Args);
         try { pinned = { args: snapshot, digest: await digestCanonical(name, text) }; }
-        catch { return toToolResult(UNVERIFIABLE); } // no WebCrypto: an insecure context
-        if (isAborted(options.signal)) return toToolResult(CANCELLED);
+        catch { return encode(UNVERIFIABLE); } // no WebCrypto: an insecure context
+        if (isAborted(options.signal)) return encode(CANCELLED);
       }
       const gated: Args = pinned ? pinned.args : args;
 
@@ -622,16 +666,16 @@ export function defineConsequentialTool<Args>(
         // A consent surface that fails is a consent surface that did not
         // confirm. Fail closed, always.
         report("closed");
-        return toToolResult(consentRefusal("closed"));
+        return encode(consentRefusal("closed"));
       }
 
       if (isAborted(options.signal)) {
         report("cancelled");
-        return toToolResult(CANCELLED);
+        return encode(CANCELLED);
       }
       if (decision.decision !== "confirmed") {
         report(decision.decision);
-        return toToolResult(consentRefusal(decision.decision));
+        return encode(consentRefusal(decision.decision));
       }
 
       let confirmation: ConsentConfirmation = decision;
@@ -639,24 +683,24 @@ export function defineConsequentialTool<Args>(
         const proof = await exchangeProof(exchange, name, pinned.args, pinned.digest, decision.auditToken, options.signal);
         if (proof === EXCHANGE_CANCELLED || isAborted(options.signal)) {
           report("cancelled");
-          return toToolResult(CANCELLED);
+          return encode(CANCELLED);
         }
         if (proof === null) {
           report("unverified");
-          return toToolResult(UNVERIFIED);
+          return encode(UNVERIFIED);
         }
         confirmation = { ...decision, proof };
       }
       report("confirmed");
       // The observer runs synchronously and may itself abort the host signal.
-      if (isAborted(options.signal)) return toToolResult(CANCELLED);
+      if (isAborted(options.signal)) return encode(CANCELLED);
 
       try {
-        return toToolResult(await spec.execute(gated, confirmation, options));
+        return encode(await spec.execute(gated, confirmation, options));
       } catch (error) {
         // Same as the read path: an aborted signal means cancelled.
-        if (isAborted(options.signal)) return toToolResult(CANCELLED);
-        return toToolResult(safeMapError(mapError, error));
+        if (isAborted(options.signal)) return encode(CANCELLED);
+        return encode(safeMapError(mapError, error));
       }
     },
   };

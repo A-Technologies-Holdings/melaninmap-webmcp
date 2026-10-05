@@ -60,11 +60,12 @@ gate itself. The gate holds on Chrome 153's real WebMCP: no confirm without a
 trusted click, and cancellation unmounts the dialog.
 
 **Status, 2026-10-04 follow-up:** done — "Breaks us now" 1 (rejected
-reservations are released; the README steers callers to the async API) and
-"Will break us" 1, 2 (documented as legacy), 5 and 6. Still open — "Breaks us
-now" 2 (needs a public result-style API and a minor release), "Will break us"
-3 (validating names at definition time is a behavior change for existing
-callers) and 4 (tracked by the browser suite).
+reservations are released; the README steers callers to the async API) and 2
+(opt-in `resultFormat: "json"`, asserted against Chrome 153 in
+`browser-tests/webmcp-host.spec.mjs`), and "Will break us" 1, 2 (documented as
+legacy), 3 (checked at registration, before the host, as `invalid_tool`; the
+`define*` helpers stay non-throwing), 5 and 6. Still open — "Will break us" 4,
+which the browser suite tracks.
 
 ### Breaks us now
 

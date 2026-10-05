@@ -140,3 +140,18 @@ test('an abort after part of the set landed reports aborted and frees the names'
  h.registerTool = () => undefined;
  assert.equal((await registerAgentToolsAsync([tool('abort_first'), tool('abort_second')])).registered, true);
 });
+test('a name the spec forbids is refused before the host is touched', async () => {
+ const { registerAgentToolsAsync } = await import('../dist/index.js');
+ let calls = 0; host({ registerTool() { calls += 1 } });
+ assert.deepEqual(registerAgentTools([tool('fine_name'), tool('bad name!')]), { registered: false, reason: 'invalid_tool', toolName: 'bad name!' });
+ assert.deepEqual(await registerAgentToolsAsync([tool('x'.repeat(129))]), { registered: false, reason: 'invalid_tool', toolName: 'x'.repeat(129) });
+ assert.deepEqual(registerAgentTools([{ ...tool('blank_description'), description: '  ' }]), { registered: false, reason: 'invalid_tool', toolName: 'blank_description' });
+ assert.deepEqual(registerAgentTools([{ ...tool('n'), name: 7 }]), { registered: false, reason: 'invalid_tool', toolName: '' });
+ assert.equal(calls, 0);
+ assert.equal(registerAgentTools([tool('fine_name'), tool('dotted.name-1')]).registered, true);
+});
+test('invalid tools are reported even where WebMCP is unsupported', () => {
+ hostAt('document', undefined); host(undefined);
+ assert.equal(registerAgentTools([tool('has space')]).reason, 'invalid_tool');
+ assert.equal(registerAgentTools([tool('valid_but_no_host')]).reason, 'unsupported');
+});
