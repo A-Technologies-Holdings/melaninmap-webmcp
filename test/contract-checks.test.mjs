@@ -55,11 +55,11 @@ const allTools = `[
     handoffTool,
   ]`;
 
-function liveRegistrarFixture(root, replacement, addition = '') {
+function liveRegistrarFixture(root, replacement, addition = '', transform = source => source) {
   const source = readFileSync(join(root, 'reference/registerAgentTools.ts'), 'utf8');
   assert.ok(source.includes(literalTools), 'public fixture registration array changed');
   const live = join(root, 'live.ts');
-  writeFileSync(live, `${source.replace(literalTools, replacement)}\n${addition}`);
+  writeFileSync(live, transform(`${source.replace(literalTools, replacement)}\n${addition}`));
   return check(root, 'check-contract-matches-reference.mjs', { WEBMCP_LIVE_REGISTRAR: live });
 }
 
@@ -88,6 +88,21 @@ function getRegisteredTools(): ModelContextTool[] {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /tool sets differ|declared but never registered/);
 }));
+
+for (const [binding, replacement, transform] of [
+  ['parameter', 'const tools = getDirectoryAgentTools();', source => source.replace(
+    'export function registerAgentTools(): void {',
+    'export function registerAgentTools(getDirectoryAgentTools = () => []): void {',
+  )],
+  ['local variable', 'const getDirectoryAgentTools = () => [];\n  const tools = getDirectoryAgentTools();', source => source],
+]) {
+  test(`an unused top-level getter cannot rescue a shadowing ${binding}`, () => fixture((root) => {
+    const result = liveRegistrarFixture(root, replacement,
+      `function getDirectoryAgentTools() { return ${allTools}; }`, transform);
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stderr, /no statically readable `const tools`/);
+  }));
+}
 
 test('dynamic getter registrations fail closed', () => fixture((root) => {
   const result = liveRegistrarFixture(root, 'const tools = getDirectoryAgentTools();',
