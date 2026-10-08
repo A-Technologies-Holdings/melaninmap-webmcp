@@ -152,6 +152,15 @@ function extractRegisteredToolNames(source) {
     );
     if (getters.length !== 1) return null;
     const getter = getters[0];
+    // Match the invoked binding, not merely a top-level name: a parameter or
+    // local variable can shadow an otherwise matching, unused declaration.
+    // Resolve this one source file without loading imports or ambient types.
+    const compilerOptions = { noLib: true, noResolve: true };
+    const host = ts.createCompilerHost(compilerOptions);
+    host.getSourceFile = name => name === file.fileName ? file : undefined;
+    const program = ts.createProgram([file.fileName], compilerOptions, host);
+    const declarations = program.getTypeChecker().getSymbolAtLocation(initializer.expression)?.declarations;
+    if (declarations?.length !== 1 || declarations[0] !== getter) return null;
     if (getter.asteriskToken || getter.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.AsyncKeyword)) return null;
     if (getter.parameters.length !== 0 || !getter.body || getter.body.statements.length !== 1) return null;
     const returned = getter.body.statements[0];
