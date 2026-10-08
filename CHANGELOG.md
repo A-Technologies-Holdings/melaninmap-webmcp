@@ -7,6 +7,14 @@ versioned path.
 
 ## [Unreleased]
 
+- Registration abort cleanup now releases the complete invocation reservation
+  immediately, including names still pending at the host, while ownership
+  guards prevent late settlements from disturbing a same-host remount.
+- Add schema-validated compatibility evidence with source-bound browser receipts,
+  explicit failed/not-run states, and an isolated packed-artifact consumer smoke test.
+- Private parity recognizes a static local tool getter and rejects dynamic,
+  asynchronous, generator, omitted-tool, and duplicate-tool variants.
+
 ## [1.1.0] - SET_TO_PUBLISH_DAY
 
 Not yet published. 1.0.0 below was prepared and dated but never published to

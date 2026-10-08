@@ -140,6 +140,42 @@ test('an abort after part of the set landed reports aborted and frees the names'
  h.registerTool = () => undefined;
  assert.equal((await registerAgentToolsAsync([tool('abort_first'), tool('abort_second')])).registered, true);
 });
+test('a partial abort releases only its invocation on the same host, despite late settlement', async () => {
+ const { registerAgentToolsAsync } = await import('../dist/index.js');
+ let rejectLate;
+ let pendingSecond = true;
+ const calls = [];
+ const sameHost = {
+  registerTool(t) {
+   calls.push(t.name);
+   if (t.name === 'abort_two' && pendingSecond) {
+    pendingSecond = false;
+    return new Promise((_, reject) => { rejectLate = reject });
+   }
+   return Promise.resolve();
+  },
+ };
+ host(sameHost);
+ const controller = new AbortController();
+ const aborted = registerAgentToolsAsync(
+  [tool('abort_one'), tool('abort_two')],
+  { signal: controller.signal, scope: 'aborted-scope' },
+ );
+ await settle();
+ assert.deepEqual(await registerAgentToolsAsync([tool('other_owner')], { scope: 'other-scope' }), {
+  registered: true, toolCount: 1, style: 'incremental',
+ });
+ controller.abort();
+ assert.deepEqual(await registerAgentToolsAsync(
+  [tool('abort_one'), tool('abort_two')],
+  { scope: 'aborted-scope' },
+ ), { registered: true, toolCount: 2, style: 'incremental' });
+ rejectLate(Error('late abort rejection'));
+ assert.deepEqual(await aborted, { registered: false, reason: 'aborted' });
+ assert.equal((await registerAgentToolsAsync([tool('abort_one')], { scope: 'third-scope' })).reason, 'tool_conflict');
+ assert.equal((await registerAgentToolsAsync([tool('other_owner')], { scope: 'other-scope' })).reason, 'already_registered');
+ assert.deepEqual(calls, ['abort_one', 'abort_two', 'other_owner', 'abort_one', 'abort_two']);
+});
 test('a name the spec forbids is refused before the host is touched', async () => {
  const { registerAgentToolsAsync } = await import('../dist/index.js');
  let calls = 0; host({ registerTool() { calls += 1 } });
