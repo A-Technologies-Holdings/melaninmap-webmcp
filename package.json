@@ -1,6 +1,6 @@
 {
   "name": "@melaninmap/webmcp-consent",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A consent gate for WebMCP tools: consequential agent tool calls suspend until a human confirms in the page.",
   "license": "MIT",
   "type": "module",

@@ -7,6 +7,12 @@ versioned path.
 
 ## [Unreleased]
 
+## [1.1.0] - SET_TO_PUBLISH_DAY
+
+Not yet published. 1.0.0 below was prepared and dated but never published to
+npm; its changes ship in this release, which is the first one intended for
+npm. Set the date on the day it is published.
+
 - **Host detection prefers `document.modelContext`.** The spec moved the
   API from `Navigator` to `Document`, and Chrome 152 and later expose it only
   there. `navigator.modelContext` is still used when `document` has no
