@@ -8,8 +8,18 @@
   },
   "browser": {
     "currentRun": {
-      "status": "not-run",
-      "reason": "No browser receipt is attached to this code candidate yet. Run test:browser and record its exact tested source commit."
+      "status": "passed",
+      "observedAt": "2026-10-08T12:57:13.242539Z",
+      "sourceCommit": "070ae8e86d7df3c47410b5ca882e7a84a6785108",
+      "engine": "Chromium",
+      "engineVersion": "153.0.8010.12",
+      "playwrightVersion": "1.63.0",
+      "command": "npm run test:browser",
+      "surface": "document.modelContext with --enable-features=WebMCP",
+      "receipt": {
+        "suite": "browser-tests: 25 passed, including native Chromium WebMCP host",
+        "result": "passed"
+      }
     }
   },
   "unsupportedHost": {
@@ -29,8 +39,11 @@
     "reason": "No production deployment was exercised."
   },
   "privateRegistrarParity": {
-    "status": "not-run",
-    "reason": "WEBMCP_LIVE_REGISTRAR was not configured.",
-    "command": "WEBMCP_LIVE_REGISTRAR=/absolute/path/to/registerAgentTools.ts npm run check:contract"
+    "status": "passed",
+    "command": "WEBMCP_LIVE_REGISTRAR=<private registrar> npm run check:contract",
+    "receipt": {
+      "suite": "Five published tool input schemas and registered tool names match the private registrar; local source parity only",
+      "result": "passed"
+    }
   }
 }
