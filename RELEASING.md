@@ -8,8 +8,9 @@ green `main`. CI checks do not publish packages; releases remain manual.
 
 - You can publish to the `@melaninmap` npm scope (`npm whoami`), with 2FA
   ready for the publish OTP.
-- `main` is clean (`git status --porcelain`) and the release commit passed
-  `npm run check` in hosted CI using a `release/*` PR branch or `ci:release` / `ci:full` label. Ready PR checks alone do not include package analysis. A configured workflow alone is not proof.
+- `main` is clean (`git status --porcelain`) and the exact release commit
+  passed `npm run check` in a recorded release session. A configured workflow
+  or an older browser receipt is not proof for the release commit.
 - `CHANGELOG.md` has an entry for the version you are about to tag.
 
 ## Steps
@@ -22,9 +23,10 @@ green `main`. CI checks do not publish packages; releases remain manual.
 3. `npm run check` — runs the whole gate: typecheck, contract drift, OpenAPI
    pointer resolution, build, the `node:test` behavioral suite, and
    `check:pack` (`publint` + `attw --pack` under the ESM-only profile).
-4. `npm pack --dry-run` and eyeball the file list — `dist/`, `src/`,
+4. `npm run check:artifact`, then `npm pack --dry-run` and eyeball the file list — `dist/`, `src/`,
    `schemas/`, `examples/*.ts` and `examples/*.css` (not `playground.html`),
-   `reference/`, and the docs, nothing else.
+   `reference/`, `compatibility/`, and the docs, nothing else. The artifact
+   check uses a temporary directory outside the checkout and does not publish.
 5. Check `git status --porcelain` again, then `npm publish`.
    `prepublishOnly` reruns the gate; it does not enforce a clean checkout.
 6. `git tag v<version> && git push origin v<version>`, then open a GitHub release

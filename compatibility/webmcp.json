@@ -1,0 +1,36 @@
+{
+  "$schema": "./webmcp.schema.json",
+  "libraryVersion": "1.1.0",
+  "specSnapshot": {
+    "repository": "webmachinelearning/webmcp",
+    "commit": "d61d0e6d297ddb6bff3510b1330dbb215c6ef43c",
+    "status": "offline-validated"
+  },
+  "browser": {
+    "currentRun": {
+      "status": "not-run",
+      "reason": "No browser receipt is attached to this code candidate yet. Run test:browser and record its exact tested source commit."
+    }
+  },
+  "unsupportedHost": {
+    "status": "passed",
+    "command": "npm test",
+    "receipt": {
+      "suite": "test/registration-safety.test.mjs",
+      "result": "passed"
+    }
+  },
+  "liveOriginTrial": {
+    "status": "not-run",
+    "reason": "No live origin-trial endpoint was exercised."
+  },
+  "productionDeployment": {
+    "status": "not-run",
+    "reason": "No production deployment was exercised."
+  },
+  "privateRegistrarParity": {
+    "status": "not-run",
+    "reason": "WEBMCP_LIVE_REGISTRAR was not configured.",
+    "command": "WEBMCP_LIVE_REGISTRAR=/absolute/path/to/registerAgentTools.ts npm run check:contract"
+  }
+}
