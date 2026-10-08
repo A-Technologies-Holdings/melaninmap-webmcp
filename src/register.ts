@@ -61,14 +61,16 @@ function markRegistered(state: HostState, scope: string, names: string[]): void 
  * register the same tool twice.
  */
 type Reservation = { scope: string; names: string[]; released: boolean };
+function releaseReservation(reservation: Reservation, state: HostState): void {
+  if (reservation.released) return;
+  reservation.released = true;
+  state.scopes.delete(reservation.scope);
+  reservation.names.forEach(name => state.names.delete(name));
+  if (state.bulkOwner === reservation.scope) delete state.bulkOwner;
+}
 function releaseOnAbort(signal: AbortSignal | undefined, state: HostState, scope: string, names: string[]): Reservation {
   const reservation: Reservation = { scope, names: [...names], released: false };
-  const release = () => {
-    if (reservation.released) return;
-    reservation.released = true;
-    state.scopes.delete(scope);
-    reservation.names.forEach(name => state.names.delete(name));
-  };
+  const release = () => releaseReservation(reservation, state);
   if (signal?.aborted) release();
   else signal?.addEventListener("abort", release, { once: true });
   return reservation;
@@ -399,6 +401,14 @@ export async function registerAgentToolsAsync(
     return { registered: false, reason: "bulk_conflict" };
   }
   markRegistered(state, scope, names);
+  // Install the lifecycle listener before awaiting the first host promise.
+  // This is deliberately one reservation for the complete invocation: an
+  // abort releases the scope and every name immediately, including a later
+  // tool whose registration promise has not settled yet. The `released` bit
+  // prevents that late settlement from deleting a remount's reservations.
+  const reservation = host.registerTool
+    ? releaseOnAbort(options?.signal, state, scope, names)
+    : { scope, names: [...names], released: false };
   // Bulk replaces the entire set; reserve the host while that promise is pending.
   if (!host.registerTool) state.bulkOwner = scope;
   let count = 0;
@@ -409,30 +419,30 @@ export async function registerAgentToolsAsync(
         await host.registerTool(tool, options?.signal ? { signal: options.signal } : undefined);
         count += 1;
       }
-      releaseOnAbort(options?.signal, state, scope, names);
       if (options?.signal?.aborted) return { registered: false, reason: "aborted" };
       return { registered: true, toolCount: count, style: "incremental" };
     }
     await host.provideContext!({ tools: [...tools] });
     return { registered: true, toolCount: tools.length, style: "bulk" };
   } catch {
+    if (reservation.released && options?.signal?.aborted) {
+      return { registered: false, reason: "aborted" };
+    }
     // Release names known not to have landed; retain scope and landed names on partial success.
     names.slice(count).forEach(name => state.names.delete(name));
+    reservation.names = names.slice(0, count);
     // A signal that fired while the host was registering rejects that call
     // with the abort reason. That is the caller ending the scope, not a host
     // without support: report it as such. A conforming host drops the tools
     // that landed, and releaseOnAbort hands their names back.
     if (options?.signal?.aborted) {
-      if (count === 0) state.scopes.delete(scope);
-      else releaseOnAbort(options.signal, state, scope, names.slice(0, count));
+      releaseReservation(reservation, state);
       return { registered: false, reason: "aborted" };
     }
     if (count === 0) {
-      state.scopes.delete(scope);
-      if (state.bulkOwner === scope) delete state.bulkOwner;
+      releaseReservation(reservation, state);
       return { registered: false, reason: "unsupported" };
     }
-    releaseOnAbort(options?.signal, state, scope, names.slice(0, count));
     return { registered: false, reason: "partial_registration", toolCount: count };
   }
 }

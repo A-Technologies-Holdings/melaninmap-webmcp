@@ -1,0 +1,273 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "libraryVersion",
+    "specSnapshot",
+    "browser",
+    "unsupportedHost",
+    "liveOriginTrial",
+    "productionDeployment",
+    "privateRegistrarParity"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "libraryVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"
+    },
+    "specSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository",
+        "commit",
+        "status"
+      ],
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "status": {
+          "enum": [
+            "offline-validated"
+          ]
+        }
+      }
+    },
+    "browser": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currentRun"
+      ],
+      "properties": {
+        "currentRun": {
+          "$ref": "#/$defs/browserCheck"
+        },
+        "historicalObservation": {
+          "$ref": "#/$defs/browserReceipt"
+        }
+      }
+    },
+    "unsupportedHost": {
+      "$ref": "#/$defs/check"
+    },
+    "liveOriginTrial": {
+      "$ref": "#/$defs/check"
+    },
+    "productionDeployment": {
+      "$ref": "#/$defs/check"
+    },
+    "privateRegistrarParity": {
+      "$ref": "#/$defs/check"
+    }
+  },
+  "$defs": {
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "suite",
+        "result"
+      ],
+      "properties": {
+        "suite": {
+          "type": "string",
+          "minLength": 1
+        },
+        "result": {
+          "enum": [
+            "passed"
+          ]
+        }
+      }
+    },
+    "check": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "reason"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "not-run"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "command": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "command",
+            "receipt"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "passed"
+              ]
+            },
+            "command": {
+              "type": "string",
+              "minLength": 1
+            },
+            "receipt": {
+              "$ref": "#/$defs/receipt"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "reason",
+            "command"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "failed"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "command": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "browserCheck": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "reason"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "not-run"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        {
+          "$ref": "#/$defs/browserReceipt"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "reason",
+            "command"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "failed"
+              ]
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "command": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "browserReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "observedAt",
+        "sourceCommit",
+        "engine",
+        "engineVersion",
+        "playwrightVersion",
+        "command",
+        "surface",
+        "receipt"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "passed"
+          ]
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "sourceCommit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "engine": {
+          "type": "string",
+          "minLength": 1
+        },
+        "engineVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "playwrightVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "surface": {
+          "type": "string",
+          "minLength": 1
+        },
+        "receipt": {
+          "$ref": "#/$defs/receipt"
+        }
+      }
+    }
+  }
+}

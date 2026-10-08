@@ -50,17 +50,21 @@ holds — the action does not run on decline, timeout, or dismissal, a consent
 surface that *throws* fails closed rather than open, and registration prefers
 the incremental style so a caller's `AbortSignal` is not silently dropped —
 and a pack lint (`publint` + `attw`) proving the published artifact resolves
-the way consumers will import it. `npm test` builds and runs the suite alone.
+the way consumers will import it. It also validates the compatibility record
+and imports the packed artifact from an isolated temporary consumer (including
+the optional React boundary). `npm test` builds and runs the suite alone.
 
-Two further checks run in the full/nightly regression lane rather than on every
-pull request. `npm run test:browser` runs the consent surface in real Chromium
+Two further checks are manual and must not be inferred from the offline gate.
+`npm run test:browser` runs the consent surface in real Chromium
 with Playwright (run `npx playwright install chromium` once first): focus,
 keyboard, untrusted clicks, queueing, expiry, cancellation, reduced motion,
 color schemes, and the gate behind Chromium's own WebMCP implementation.
 `npm run check:spec` fetches the WebMCP specification and fails with a readable
 diff when its API surface drifts from `spec/webmcp-surface.json`; it needs the
 network. See [docs/spec-drift.md](./docs/spec-drift.md) for the current
-findings.
+findings. `npm run check:compat` validates the machine-readable evidence in
+[`compatibility/webmcp.json`](./compatibility/webmcp.json); that record distinguishes passed, failed, and unexecuted checks. Browser receipts
+name the exact tested source commit; historical notes are not current-run proof.
 
 `npm run build` emits ESM plus declarations to `dist/`, which is what `main`,
 `types` and `exports` point at — importing the package gets you compiled

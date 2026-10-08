@@ -34,6 +34,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { createContext, runInContext } from "node:vm";
+import ts from "@typescript/typescript6";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const contract = JSON.parse(
@@ -117,7 +118,8 @@ function extractDeclaredTools(source) {
 /**
  * The tool names a registrar actually REGISTERS.
  *
- * Read from the `const tools = [...]` array, which is what gets passed to
+ * Read from the `const tools = [...]` array (or its exact, local, no-argument
+ * getter), which is what gets passed to
  * `registerTool` and `provideContext` — not from the declarations. A tool can
  * be declared, published, and byte-identical across all three files while
  * having been dropped from that array, in which case it is advertised to
@@ -126,13 +128,53 @@ function extractDeclaredTools(source) {
  */
 function extractRegisteredToolNames(source) {
   const declared = extractDeclaredTools(source);
-  const cleaned = stripComments(source);
-  const arrayMatch = /const\s+tools\s*=\s*\[([^\]]*)\]/.exec(cleaned);
-  if (!arrayMatch) return null;
-  return arrayMatch[1]
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean)
+  const file = ts.createSourceFile("registrar.ts", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const toolDeclarations = [];
+  const visit = (node) => {
+    if (ts.isVariableStatement(node)) {
+      for (const declaration of node.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && declaration.name.text === "tools") {
+          toolDeclarations.push(declaration);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  if (toolDeclarations.length !== 1) return null;
+
+  let initializer = toolDeclarations[0].initializer;
+  if (initializer && ts.isCallExpression(initializer)) {
+    if (!ts.isIdentifier(initializer.expression) || initializer.arguments.length !== 0) return null;
+    const getterName = initializer.expression.text;
+    const getters = file.statements.filter((statement) =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === getterName,
+    );
+    if (getters.length !== 1) return null;
+    const getter = getters[0];
+    // Match the invoked binding, not merely a top-level name: a parameter or
+    // local variable can shadow an otherwise matching, unused declaration.
+    // Resolve this one source file without loading imports or ambient types.
+    const compilerOptions = { noLib: true, noResolve: true };
+    const host = ts.createCompilerHost(compilerOptions);
+    host.getSourceFile = name => name === file.fileName ? file : undefined;
+    const program = ts.createProgram([file.fileName], compilerOptions, host);
+    const declarations = program.getTypeChecker().getSymbolAtLocation(initializer.expression)?.declarations;
+    if (declarations?.length !== 1 || declarations[0] !== getter) return null;
+    if (getter.asteriskToken || getter.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.AsyncKeyword)) return null;
+    if (getter.parameters.length !== 0 || !getter.body || getter.body.statements.length !== 1) return null;
+    const returned = getter.body.statements[0];
+    if (!ts.isReturnStatement(returned) || !returned.expression) return null;
+    initializer = returned.expression;
+  }
+  if (!initializer || !ts.isArrayLiteralExpression(initializer)) return null;
+  const identifiers = [];
+  for (const element of initializer.elements) {
+    if (!ts.isIdentifier(element)) return null;
+    identifiers.push(element.text);
+  }
+  if (new Set(identifiers).size !== identifiers.length) return null;
+  return identifiers
     .map((identifier) => declared.get(identifier) ?? `<unknown:${identifier}>`)
     .sort();
 }
@@ -193,7 +235,7 @@ const publishedNames = contract.tools.map((t) => t.name).sort();
 const referenceNames = extractRegisteredToolNames(referenceSource);
 if (referenceNames === null) {
   failures += 1;
-  console.error("FAIL no `const tools = [...]` registration array in reference/registerAgentTools.ts");
+  console.error("FAIL no statically readable `const tools` registration array in reference/registerAgentTools.ts");
 }
 const declaredButUnregistered = [...extractDeclaredTools(referenceSource).values()]
   .filter((name) => !(referenceNames ?? []).includes(name))
@@ -243,7 +285,7 @@ if (LIVE && !existsSync(LIVE)) {
   // registering nothing this gate can see.
   if (liveNames === null) {
     failures += 1;
-    console.error("FAIL no `const tools = [...]` registration array in the live landing registrar");
+    console.error("FAIL no statically readable `const tools` registration array in the live landing registrar");
   } else if (JSON.stringify(liveNames) !== JSON.stringify(referenceNames)) {
     failures += 1;
     console.error("FAIL tool sets differ between reference/ and the live registrar");

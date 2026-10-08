@@ -13,6 +13,7 @@
     "examples/*.ts",
     "examples/*.css",
     "reference",
+    "compatibility",
     "README.md",
     "SECURITY.md",
     "CONTRIBUTING.md",
@@ -47,8 +48,10 @@
     "test": "node --test",
     "check:contract": "node scripts/check-contract-matches-reference.mjs",
     "check:openapi": "node scripts/check-openapi-pointers.mjs",
+    "check:compat": "node scripts/check-compatibility.mjs",
+    "check:artifact": "node scripts/check-release-artifact.mjs",
     "check:pack": "publint && attw --pack . --profile esm-only",
-    "check": "npm run typecheck && npm run check:contract && npm run check:openapi && npm run build && npm run build:test && node --test && npm run check:pack",
+    "check": "npm run typecheck && npm run check:contract && npm run check:openapi && npm run check:compat && npm run build && npm run build:test && node --test && npm run check:pack && npm run check:artifact",
     "test:browser": "npm run build && npm run build:test && playwright test",
     "check:spec": "node scripts/check-spec-drift.mjs"
   },
@@ -93,6 +96,7 @@
       "default": "./dist/server.js"
     },
     "./schemas/tools": "./schemas/melaninmap.tools.json",
+    "./compatibility": "./compatibility/webmcp.json",
     "./package.json": "./package.json"
   },
   "sideEffects": false

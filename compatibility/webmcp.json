@@ -1,0 +1,49 @@
+{
+  "$schema": "./webmcp.schema.json",
+  "libraryVersion": "1.1.0",
+  "specSnapshot": {
+    "repository": "webmachinelearning/webmcp",
+    "commit": "d61d0e6d297ddb6bff3510b1330dbb215c6ef43c",
+    "status": "offline-validated"
+  },
+  "browser": {
+    "currentRun": {
+      "status": "passed",
+      "observedAt": "2026-10-08T12:57:13.242539Z",
+      "sourceCommit": "070ae8e86d7df3c47410b5ca882e7a84a6785108",
+      "engine": "Chromium",
+      "engineVersion": "153.0.8010.12",
+      "playwrightVersion": "1.63.0",
+      "command": "npm run test:browser",
+      "surface": "document.modelContext with --enable-features=WebMCP",
+      "receipt": {
+        "suite": "browser-tests: 25 passed, including native Chromium WebMCP host",
+        "result": "passed"
+      }
+    }
+  },
+  "unsupportedHost": {
+    "status": "passed",
+    "command": "npm test",
+    "receipt": {
+      "suite": "test/registration-safety.test.mjs",
+      "result": "passed"
+    }
+  },
+  "liveOriginTrial": {
+    "status": "not-run",
+    "reason": "No live origin-trial endpoint was exercised."
+  },
+  "productionDeployment": {
+    "status": "not-run",
+    "reason": "No production deployment was exercised."
+  },
+  "privateRegistrarParity": {
+    "status": "passed",
+    "command": "WEBMCP_LIVE_REGISTRAR=<private registrar> npm run check:contract",
+    "receipt": {
+      "suite": "Five published tool input schemas and registered tool names match the private registrar; local source parity only",
+      "result": "passed"
+    }
+  }
+}
