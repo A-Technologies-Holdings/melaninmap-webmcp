@@ -164,6 +164,19 @@ an instruction the model can act on:
 it". A surface resolves `busy` instead of showing anything when it is already
 holding as many requests as it will hold.
 
+### Result format
+
+By default a tool resolves an MCP-style result, `{ content: [{ type: "text",
+text: "<JSON>" }] }`. A spec WebMCP browser JSON-serializes whatever `execute`
+resolves to, so there the agent gets that wrapper with the envelope inside it
+as an escaped string, and has to unwrap it to read "Do not retry". Pass
+`resultFormat: "json"` to `defineReadTool` or `defineConsequentialTool` to
+resolve the JSON value itself. The agent then reads `{ "ok": false, "code":
+"consent_declined", ... }` in one parse. Values that do not serialize still
+become `null`. Keep the default for MCP-style polyfills and bridges that expect
+content blocks. A tool defined with `"json"` is typed `ModelContextTool<unknown>`,
+and `toJsonResult` is exported for hand-written tools.
+
 ### Logging decisions
 
 Pass `onDecision` to a consequential tool to feed your own confirmation log:
@@ -287,7 +300,25 @@ only the bulk `provideContext` style *replaces* the page's tool set on every
 call, so scopes there cannot be independent: the first scope to register owns
 the page, and a different scope gets `{ registered: false, reason:
 "bulk_conflict" }` instead of silently erasing the first scope's tools. The bulk
-style takes no `{ signal }`, so its tools live for the page.
+style takes no `{ signal }`, so its tools live for the page. `provideContext` was
+removed from the spec and from Chrome 147; only older polyfills reach this path,
+and it will be dropped in the next major version.
+
+The host is looked up at `document.modelContext` first, where the spec and
+Chrome 152 and later expose it, then at the older `navigator.modelContext`.
+
+Both registration functions check every tool against the spec's rules before
+touching the host: a name of 1 to 128 characters from `[A-Za-z0-9_.-]` and a
+non-empty description. A tool that breaks them makes the whole call return
+`{ registered: false, reason: "invalid_tool", toolName }` on every browser,
+including ones without WebMCP. Nothing registers, so you find the mistake in
+development rather than in a browser that quietly refused it.
+
+Tools registered from a cross-origin iframe need the embedder's permission:
+the WebMCP `tools` permissions-policy feature defaults to `'self'`, so the
+embedding page must grant it (`<iframe allow="tools" …>`). Without it the
+browser rejects `registerTool()` with `NotAllowedError`, which
+`registerAgentToolsAsync` reports as `unsupported`.
 
 ## Writing tool descriptions
 
@@ -549,7 +580,13 @@ optional-feature failures and cannot break the page.
 
 For promise-based browser registration, use `await registerAgentToolsAsync(tools)`.
 It waits for acceptance and reports partial failures without retrying rejected host calls.
+A signal that aborts while the browser is still registering reports `aborted`.
 `registerAgentTools` remains the synchronous compatibility API for older prototypes.
+Every current WebMCP browser returns a promise from `registerTool()`, so the sync
+API answers `async_registration_pending` whether or not the browser accepted the
+tools; prefer the async API. When the browser rejects a registration, the sync
+API hands the reservation back once the rejection arrives, so a later retry is
+not refused as `already_registered`.
 
 To try the local consent playground, run `npm run build && npm run build:test`,
 then `python3 -m http.server 8080` from a clone of this repository (the playground

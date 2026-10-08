@@ -1,7 +1,7 @@
 /**
  * Feature-detected registration against the proposed Web Model Context API.
  *
- * `navigator.modelContext` / `document.modelContext` is a browser proposal,
+ * `document.modelContext` (and the older `navigator.modelContext`) is a browser proposal,
  * not a shipped standard. Nothing here may assume it exists: unsupported
  * browsers receive a silent no-op. Experimental browser support is detected
  * rather than inferred from user-agent strings. Load it lazily, after your app has mounted, so a change in
@@ -47,20 +47,85 @@ function stateFor(identity: object): HostState {
   } catch { /* Locked legacy globals must not throw into the page. */ }
   return state;
 }
-function registrationScope(tools: readonly ModelContextTool[], options?: RegisterAgentToolsOptions): string {
+function registrationScope(tools: readonly ModelContextTool<unknown>[], options?: RegisterAgentToolsOptions): string {
   return options?.scope || JSON.stringify([...new Set(tools.map(tool => tool.name))].sort());
 }
 function markRegistered(state: HostState, scope: string, names: string[]): void {
   state.scopes.add(scope);
   names.forEach(name => state.names.add(name));
 }
-function releaseOnAbort(signal: AbortSignal | undefined, state: HostState, scope: string, names: string[]): void {
+/**
+ * A held reservation. Whichever release runs first (abort, or a host
+ * rejection) hands back its names, and later releases skip them: by then a
+ * remount may own the same names, and deleting them would let a third mount
+ * register the same tool twice.
+ */
+type Reservation = { scope: string; names: string[]; released: boolean };
+function releaseOnAbort(signal: AbortSignal | undefined, state: HostState, scope: string, names: string[]): Reservation {
+  const reservation: Reservation = { scope, names: [...names], released: false };
   const release = () => {
+    if (reservation.released) return;
+    reservation.released = true;
     state.scopes.delete(scope);
-    names.forEach(name => state.names.delete(name));
+    reservation.names.forEach(name => state.names.delete(name));
   };
   if (signal?.aborted) release();
   else signal?.addEventListener("abort", release, { once: true });
+  return reservation;
+}
+
+/**
+ * The sync API cannot wait for a host promise, but it can still hand back
+ * reservations the host refused. A rejected registration published nothing,
+ * so keeping its names would turn a retry into a false `already_registered`
+ * while no tool is live. The scope is released only when nothing landed.
+ */
+function releaseOnRejection(
+  pending: ReadonlyArray<{ name: string; result: PromiseLike<unknown> }>,
+  landedSynchronously: number,
+  state: HostState,
+  reservation: Reservation,
+): void {
+  if (pending.length === 0) return;
+  void Promise.allSettled(pending.map(entry => Promise.resolve(entry.result))).then(outcomes => {
+    if (reservation.released) return;
+    const refused = new Set(
+      pending.filter((_, index) => outcomes[index]!.status === "rejected").map(entry => entry.name),
+    );
+    if (refused.size === 0) return;
+    refused.forEach(name => state.names.delete(name));
+    reservation.names = reservation.names.filter(name => !refused.has(name));
+    if (landedSynchronously === 0 && reservation.names.length === 0) {
+      reservation.released = true;
+      state.scopes.delete(reservation.scope);
+      if (state.bulkOwner === reservation.scope) delete state.bulkOwner;
+    }
+  }).catch(() => undefined);
+}
+
+/**
+ * The spec's tool-name rule: 1 to 128 characters of `[A-Za-z0-9_.-]`. The
+ * browser rejects anything else, and so does an empty description.
+ */
+const TOOL_NAME = /^[A-Za-z0-9_.-]{1,128}$/;
+/**
+ * The first tool the browser would refuse, checked before anything reaches
+ * the host. Caught here, the mistake fails the same way on every browser and
+ * never leaves half a set registered.
+ */
+function firstInvalidTool(tools: readonly ModelContextTool<unknown>[]): string | null {
+  for (const tool of tools) {
+    let name: unknown;
+    let description: unknown;
+    try {
+      ({ name, description } = tool);
+    } catch {
+      return "";
+    }
+    if (typeof name !== "string" || !TOOL_NAME.test(name)) return typeof name === "string" ? name : "";
+    if (typeof description !== "string" || description.trim() === "") return name;
+  }
+  return null;
 }
 
 /** Narrow one candidate host object, or null if it registers nothing. */
@@ -97,12 +162,15 @@ function narrowModelContext(candidate: unknown): (DetectedModelContext & { ident
  * deployed registrar in `reference/`, which matters because that file is
  * published beside this one as the same thing done for real.
  *
- * `navigator.modelContext` is checked first, then `document.modelContext` —
- * and independently, so a navigator object that exists but exposes no
- * registrar does not mask a working document-level one.
+ * `document.modelContext` is checked first: it is where the spec and Chrome 152
+ * and later expose the API. `navigator.modelContext` is the pre-2026-05 location
+ * (Chrome 146 to 151 and older polyfills), kept as a fallback so a stale
+ * polyfill on `navigator` cannot win over the browser's own host. The two are
+ * checked independently, so an object that exists but exposes no registrar
+ * does not mask a working one at the other location.
  */
 function detectHost(): (DetectedModelContext & { identity: object }) | null {
-  for (const target of ["navigator", "document"] as const) {
+  for (const target of ["document", "navigator"] as const) {
     try {
       const surface = (globalThis as unknown as Record<string, { modelContext?: unknown }>)[target];
       const host = narrowModelContext(surface?.modelContext);
@@ -148,6 +216,15 @@ export type RegisterResult =
       reason: "partial_registration";
       toolCount: number;
     }
+  | {
+      registered: false;
+      /**
+       * A tool name outside `[A-Za-z0-9_.-]{1,128}`, or an empty description.
+       * Nothing was registered. `toolName` is the first offending name.
+       */
+      reason: "invalid_tool";
+      toolName: string;
+    }
   | { registered: true; toolCount: number; style: "bulk" | "incremental" };
 
 /**
@@ -157,7 +234,7 @@ export type RegisterResult =
  * registrar at all.
  */
 export function registerAgentTools(
-  tools: readonly ModelContextTool[],
+  tools: readonly ModelContextTool<unknown>[],
   options?: RegisterAgentToolsOptions,
 ): RegisterResult {
   // A signal that has already fired means the caller's scope is gone before we
@@ -166,6 +243,8 @@ export function registerAgentTools(
   if (options?.signal?.aborted) {
     return { registered: false, reason: "aborted" };
   }
+  const invalid = firstInvalidTool(tools);
+  if (invalid !== null) return { registered: false, reason: "invalid_tool", toolName: invalid };
 
   const host = detectHost();
   if (!host) return { registered: false, reason: "unsupported" };
@@ -180,6 +259,7 @@ export function registerAgentTools(
   let registeredToolCount = 0;
   let allSuccessfulRegistrationsScoped = true;
   let asyncRegistrationPending = false;
+  const pending: { name: string; result: PromiseLike<unknown> }[] = [];
   try {
     if (host.registerTool) {
       // Whether EVERY tool ended up scoped to the caller's signal. The
@@ -206,8 +286,9 @@ export function registerAgentTools(
           if (result && typeof (result as PromiseLike<unknown>).then === "function") {
             asyncRegistrationPending = true;
             // The compatibility API cannot report acceptance before it settles.
-            // Observe rejections and retain ownership so callers cannot blindly retry.
-            void Promise.resolve(result).catch(() => undefined);
+            // Keep the reservation while it is pending; releaseOnRejection
+            // hands back whatever the host refuses.
+            pending.push({ name: tool.name, result: result as PromiseLike<unknown> });
           }
         } catch {
           // Some implementations reject an unknown options bag. Retry bare
@@ -215,7 +296,7 @@ export function registerAgentTools(
           const result = host.registerTool(tool);
           if (result && typeof (result as PromiseLike<unknown>).then === "function") {
             asyncRegistrationPending = true;
-            void Promise.resolve(result).catch(() => undefined);
+            pending.push({ name: tool.name, result: result as PromiseLike<unknown> });
           }
           allSuccessfulRegistrationsScoped = false;
         }
@@ -235,9 +316,11 @@ export function registerAgentTools(
       // duplicate executions and duplicate consent prompts, or an outright
       // failure on a host that enforces unique names. Keeping the flags set is
       // the safe side of that trade.
-      if (allSuccessfulRegistrationsScoped) {
-        releaseOnAbort(options?.signal, state, scope, names.slice(0, registeredToolCount));
-      }
+      const landed = names.slice(0, registeredToolCount);
+      const reservation: Reservation = allSuccessfulRegistrationsScoped
+        ? releaseOnAbort(options?.signal, state, scope, landed)
+        : { scope, names: landed, released: false };
+      releaseOnRejection(pending, registeredToolCount - pending.length, state, reservation);
       if (asyncRegistrationPending) return { registered: false, reason: "async_registration_pending" };
       return {
         registered: true,
@@ -254,12 +337,18 @@ export function registerAgentTools(
         return { registered: false, reason: "bulk_conflict" };
       }
       const result = host.provideContext({ tools: [...tools] });
-      if (result && typeof (result as PromiseLike<unknown>).then === "function") {
-        asyncRegistrationPending = true;
-        void Promise.resolve(result).catch(() => undefined);
-      }
       markRegistered(state, scope, names);
       state.bulkOwner = scope;
+      if (result && typeof (result as PromiseLike<unknown>).then === "function") {
+        asyncRegistrationPending = true;
+        // One call carries the whole set, so a rejection releases all of it.
+        releaseOnRejection(
+          names.map(name => ({ name, result: result as PromiseLike<unknown> })),
+          0,
+          state,
+          { scope, names: [...names], released: false },
+        );
+      }
       if (asyncRegistrationPending) return { registered: false, reason: "async_registration_pending" };
       return { registered: true, toolCount: tools.length, style: "bulk" };
     }
@@ -291,10 +380,12 @@ export function registerAgentTools(
  * Rejections are surfaced without retrying a possibly consequential host call.
  */
 export async function registerAgentToolsAsync(
-  tools: readonly ModelContextTool[],
+  tools: readonly ModelContextTool<unknown>[],
   options?: RegisterAgentToolsOptions,
 ): Promise<RegisterResult> {
   if (options?.signal?.aborted) return { registered: false, reason: "aborted" };
+  const invalid = firstInvalidTool(tools);
+  if (invalid !== null) return { registered: false, reason: "invalid_tool", toolName: invalid };
   const host = detectHost();
   if (!host) return { registered: false, reason: "unsupported" };
   const state = stateFor(host.identity);
@@ -327,6 +418,15 @@ export async function registerAgentToolsAsync(
   } catch {
     // Release names known not to have landed; retain scope and landed names on partial success.
     names.slice(count).forEach(name => state.names.delete(name));
+    // A signal that fired while the host was registering rejects that call
+    // with the abort reason. That is the caller ending the scope, not a host
+    // without support: report it as such. A conforming host drops the tools
+    // that landed, and releaseOnAbort hands their names back.
+    if (options?.signal?.aborted) {
+      if (count === 0) state.scopes.delete(scope);
+      else releaseOnAbort(options.signal, state, scope, names.slice(0, count));
+      return { registered: false, reason: "aborted" };
+    }
     if (count === 0) {
       state.scopes.delete(scope);
       if (state.bulkOwner === scope) delete state.bulkOwner;

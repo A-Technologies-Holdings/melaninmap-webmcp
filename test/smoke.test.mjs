@@ -522,6 +522,7 @@ test("the bulk owner's own scope stays idempotent, not a conflict", () => {
 // adds, so a host offering registerTool is unaffected by a prior bulk owner.
 test("a bulk owner does not block incremental registration", () => {
   let incremental = 0;
+  setModelContext("document", undefined);
   setModelContext("navigator", {
     registerTool() {
       incremental += 1;

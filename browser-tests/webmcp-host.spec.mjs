@@ -111,3 +111,37 @@ test("aborting executeTool() removes the dialog and never runs the action", asyn
   expect(call.error).toBe("AbortError");
   await expect(page.locator("#count")).toHaveText("0");
 });
+
+test("resultFormat json reaches the agent as the envelope itself, not double-encoded", async ({ page }) => {
+  const results = await page.evaluate(async () => {
+    const { defineReadTool, registerAgentToolsAsync } = await import("/dist/index.js");
+    const spec = (name, resultFormat) => ({
+      name,
+      description: "Returns a fixed refusal, for the result-format test.",
+      inputSchema: { type: "object", properties: {} },
+      parseArgs: () => ({}),
+      execute: async () => ({ ok: false, code: "consent_declined", message: "Do not retry." }),
+      ...(resultFormat ? { resultFormat } : {}),
+    });
+    const registered = await registerAgentToolsAsync([
+      defineReadTool(spec("format_json", "json")),
+      defineReadTool(spec("format_mcp")),
+    ]);
+    const tools = await document.modelContext.getTools();
+    const call = async (name) => {
+      const tool = tools.find((candidate) => candidate.name === name);
+      try {
+        return await document.modelContext.executeTool(tool, {});
+      } catch (error) {
+        if (error?.name !== "UnknownError" || !/parse input/i.test(error?.message ?? "")) throw error;
+        return document.modelContext.executeTool(tool, "{}");
+      }
+    };
+    return { registered, json: await call("format_json"), mcp: await call("format_mcp") };
+  });
+  expect(results.registered).toMatchObject({ registered: true, toolCount: 2 });
+  // One parse yields the refusal, readable by a model without unwrapping.
+  expect(JSON.parse(results.json)).toEqual({ ok: false, code: "consent_declined", message: "Do not retry." });
+  // The default still arrives wrapped, with the refusal as an escaped string.
+  expect(Array.isArray(JSON.parse(results.mcp).content)).toBe(true);
+});
