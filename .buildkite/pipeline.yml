@@ -6,7 +6,7 @@ steps:
     command: "bash scripts/buildkite-check.sh package"
     timeout_in_minutes: 15
     agents:
-      queue: "macos-15-medium"
+      queue: "linux-small"
     concurrency: 1
     concurrency_group: "melanin-map/pr-validation-free"
     notify:
@@ -18,7 +18,7 @@ steps:
     command: "bash scripts/buildkite-check.sh dco"
     timeout_in_minutes: 5
     agents:
-      queue: "macos-15-medium"
+      queue: "linux-small"
     concurrency: 1
     concurrency_group: "melanin-map/pr-validation-free"
     notify:
@@ -31,7 +31,7 @@ steps:
     command: "bash scripts/buildkite-check.sh regression"
     timeout_in_minutes: 15
     agents:
-      queue: "macos-15-medium"
+      queue: "linux-small"
     concurrency: 1
     concurrency_group: "melanin-map/pr-validation-free"
     notify:
@@ -43,7 +43,7 @@ steps:
     command: "bash scripts/buildkite-check.sh regression"
     timeout_in_minutes: 15
     agents:
-      queue: "macos-15-medium"
+      queue: "linux-small"
     concurrency: 1
     concurrency_group: "melanin-map/pr-validation-free"
     notify:
@@ -62,7 +62,7 @@ steps:
     timeout_in_minutes: 20
     artifact_paths: "test-results/browser/**/*"
     agents:
-      queue: "macos-15-medium"
+      queue: "linux-small"
     concurrency: 1
     concurrency_group: "melanin-map/pr-validation-free"
     notify:
@@ -79,7 +79,7 @@ steps:
     soft_fail:
       - exit_status: 75
     agents:
-      queue: "macos-15-medium"
+      queue: "linux-small"
     concurrency: 1
     concurrency_group: "melanin-map/pr-validation-free"
     notify:

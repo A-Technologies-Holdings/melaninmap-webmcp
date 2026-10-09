@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# SLA-1117: hosted Linux images can ship Node 20. Preserve the image's npm
+# prefix before placing the supported Node binary on PATH (npm exec ENOENT).
+if [[ "${1:-}" != "dco" ]] && ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)'; then
+  npm_config_prefix="$(npm prefix --global)"
+  [[ -n "${npm_config_prefix}" ]]
+  export npm_config_prefix
+  node_binary="$(npx --yes node@22.22.0 -p 'process.execPath')"
+  [[ -x "${node_binary}" ]]
+  export PATH="$(dirname "${node_binary}"):${PATH}"
+fi
 case "${1:-}" in
   package|regression)
     node -e 'if (Number(process.versions.node.split(".")[0]) < 22) throw Error("Node 22+ required")'
