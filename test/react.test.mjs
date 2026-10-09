@@ -116,7 +116,10 @@ test("each request renders fresh nodes, so focus cannot carry over", async () =>
   await view.unmount();
 });
 
-test("a script-dispatched Confirm click does not confirm", async () => {
+test("a script-dispatched Confirm click does not confirm", async (t) => {
+  // Rendering may take longer than the deadline on a busy release runner.
+  // Advance the consent clock explicitly so this tests trust, not CPU speed.
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1000 });
   const queue = createConsentQueue();
   const view = await mount(queue);
   let pending;
@@ -124,7 +127,10 @@ test("a script-dispatched Confirm click does not confirm", async () => {
   await React.act(() => view.button("confirm").click()); // isTrusted is false
   assert.equal(view.title(), "Pay", "the prompt stays open");
   // The deadline fires a state update, so wait for it inside act().
-  await React.act(async () => { assert.deepEqual(await pending, { decision: "timeout" }); });
+  await React.act(async () => {
+    t.mock.timers.tick(40);
+    assert.deepEqual(await pending, { decision: "timeout" });
+  });
   assert.equal(view.title(), null);
   await view.unmount();
 });

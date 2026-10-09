@@ -15,7 +15,8 @@ green `main`. CI checks do not publish packages; releases remain manual.
 
 ## Steps
 
-1. For the initial 1.0.0 release keep the existing version. For later releases,
+1. The first npm release is 1.1.0; 1.0.0 was never published. Keep the existing
+   1.1.0 version for this release. For later releases,
    bump the version — `npm version <patch|minor|major> --no-git-tag-version`
    (the tag is created below, after the checks pass). Commit the bump.
 2. Update `CHANGELOG.md`: rename the `Unreleased` heading to the new version
