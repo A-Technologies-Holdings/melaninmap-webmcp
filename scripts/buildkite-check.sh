@@ -7,7 +7,11 @@ if [[ "${1:-}" != "dco" ]] && ! node -e 'process.exit(Number(process.versions.no
   npm_config_prefix="$(npm prefix --global)"
   [[ -n "${npm_config_prefix}" ]]
   export npm_config_prefix
-  node_binary="$(npx --yes node@22.22.0 -p 'process.execPath')"
+  if ! node_binary="$(npx --yes node@22.22.0 -p 'process.execPath')"; then
+    # Preserve the spec lane's temporary-network-failure classification.
+    [[ "${1:-}" == "spec" ]] && exit 75
+    exit 1
+  fi
   [[ -x "${node_binary}" ]]
   export PATH="$(dirname "${node_binary}"):${PATH}"
 fi
@@ -34,7 +38,7 @@ case "${1:-}" in
     # Playwright's own Chromium, never a system browser; cached on the agent.
     node -e 'if (Number(process.versions.node.split(".")[0]) < 22) throw Error("Node 22+ required")'
     npm ci --ignore-scripts
-    npx playwright install chromium
+    npx playwright install --with-deps chromium
     npm run test:browser
     ;;
   spec)
