@@ -7,7 +7,7 @@ steps:
   - label: ':pipeline: Upload checks'
     command: buildkite-agent pipeline upload .buildkite/pipeline.yml
     agents:
-      queue: macos-15-medium
+      queue: linux-small
 ```
 
 Build pull requests when opened/updated or when their base branch changes, including PR base metadata. Disable ordinary branch and tag builds. Enable ready-for-review and label-change events. Set the provider filter to:
@@ -16,7 +16,7 @@ Build pull requests when opened/updated or when their base branch changes, inclu
 build.pull_request.id != null && (!build.pull_request.draft || build.pull_request.labels includes "ci:full" || build.pull_request.labels includes "ci:release")
 ```
 
-Disable "Skip when pull request has existing build for commit and branch" so marking the same commit ready, or adding a regression label, creates a fresh validation. Enable skipping queued and canceling running intermediate builds with `!main !release/*`. Use the existing macOS queue and shared serialization; no new paid queue is provisioned. Package and DCO steps report `Buildkite / WebMCP package` and `Buildkite / WebMCP DCO`. Jobs have bounded runtimes. No publishing or deployment is performed.
+Disable "Skip when pull request has existing build for commit and branch" so marking the same commit ready, or adding a regression label, creates a fresh validation. Enable skipping queued and canceling running intermediate builds with `!main !release/*`. Use the existing included Linux AMD64 queue and shared serialization. Queue selection alone is not a spending cap; keep the provider bootstrap pinned to a reviewed head and a single permitted build number until the remaining included allowance has been checked. Paid macOS dispatch stays paused. Package and DCO steps report `Buildkite / WebMCP package` and `Buildkite / WebMCP DCO`. Jobs have bounded runtimes. No publishing or deployment is performed.
 
 Keep fork builds disabled until an isolated, credential-free runner policy is configured. Public PR code must never receive production credentials or execute on a signing runner. This pipeline requires only public repository checkout access.
 
@@ -36,12 +36,16 @@ Two more steps join the regression lanes above, on the union of their
 conditions: the nightly schedule on `main`, and PRs labelled `ci:full` or
 `ci:release` (or from a `release/*` branch). They never run in the focused
 ready-PR gate, and neither check is required. `Buildkite / WebMCP browser
-regression` installs Playwright's Chromium (`npx playwright install chromium`,
+regression` installs Playwright's Chromium (`npx playwright install --with-deps chromium`,
 cached on the agent) and runs `npm run test:browser`; failure traces and
 screenshots upload from `test-results/browser/`. `Buildkite / WebMCP spec drift`
 runs `npm run check:spec`: exit 1 is upstream drift, exit 3 means the spec no
 longer parses, and exit 75 (network failure, nothing compared) is a soft
-failure. Both share the serialized concurrency group on purpose: one macOS
+failure. Both share the serialized concurrency group on purpose: one Linux
 agent, no new queue. Local equivalents: `bash scripts/buildkite-check.sh browser`
 and `bash scripts/buildkite-check.sh spec`.
 
+
+## October 9 free CI restoration (SLA-1117)
+
+Founder approval is $0 incremental spend. Both the provider bootstrap and uploaded jobs use `linux-small` (2 vCPU). The account showed 4,000 included Linux vCPU minutes and zero period usage before restoration. Pin the bootstrap to one reviewed commit and validate its allowed build number and PR ID before uploading jobs; unrelated events must not dispatch. Re-read usage before authorizing another bounded run. Do not treat an unbounded nightly schedule as free.
