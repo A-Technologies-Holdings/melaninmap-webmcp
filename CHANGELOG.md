@@ -5,7 +5,9 @@ project follows the compatibility contract in [CONTRIBUTING.md](./CONTRIBUTING.m
 published tool names and schemas are stable surfaces and only change on a new
 versioned path.
 
-## [Unreleased]
+## [1.1.0] - 2026-10-09
+
+First npm release; the previously prepared 1.0.0 was never published.
 
 - Registration abort cleanup now releases the complete invocation reservation
   immediately, including names still pending at the host, while ownership
@@ -14,12 +16,6 @@ versioned path.
   explicit failed/not-run states, and an isolated packed-artifact consumer smoke test.
 - Private parity recognizes a static local tool getter and rejects dynamic,
   asynchronous, generator, omitted-tool, and duplicate-tool variants.
-
-## [1.1.0] - SET_TO_PUBLISH_DAY
-
-Not yet published. 1.0.0 below was prepared and dated but never published to
-npm; its changes ship in this release, which is the first one intended for
-npm. Set the date on the day it is published.
 
 - **Host detection prefers `document.modelContext`.** The spec moved the
   API from `Navigator` to `Document`, and Chrome 152 and later expose it only
