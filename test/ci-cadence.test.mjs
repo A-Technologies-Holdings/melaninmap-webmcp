@@ -34,7 +34,7 @@ test('unknown CI mode fails instead of reporting green', () => {
 
 test('browser regression installs Playwright Chromium, then runs the browser suite', () => {
   const lines = commands('browser').split('\n');
-  assert.deepEqual(lines.filter(Boolean), ['ci --ignore-scripts', 'npx playwright install chromium', 'run test:browser']);
+  assert.deepEqual(lines.filter(Boolean), ['ci --ignore-scripts', 'npx playwright install --with-deps chromium', 'run test:browser']);
 });
 
 test('spec drift runs check:spec, and an install failure reports as network (75)', () => {
