@@ -36,6 +36,11 @@ export async function startStaticServer(root) {
     let file;
     try {
       const { pathname } = new URL(req.url ?? "/", "http://127.0.0.1");
+      // Chrome requests this implicitly; keep missing test assets as real 404s.
+      if (pathname === "/favicon.ico") {
+        res.writeHead(204).end();
+        return;
+      }
       file = path.resolve(base, `.${decodeURIComponent(pathname)}`);
     } catch {
       res.writeHead(400).end();

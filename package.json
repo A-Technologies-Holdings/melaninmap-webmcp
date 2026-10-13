@@ -39,7 +39,7 @@
     "url": "git+https://github.com/A-Technologies-Holdings/melaninmap-webmcp.git"
   },
   "scripts": {
-    "build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json",
+    "build": "node node_modules/typescript/bin/tsc -p tsconfig.build.json && node scripts/build-reference-fixtures.mjs",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "prepack": "npm run build",
     "prepublishOnly": "npm run check",
@@ -97,7 +97,18 @@
     },
     "./schemas/tools": "./schemas/melaninmap.tools.json",
     "./compatibility": "./compatibility/webmcp.json",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./schemas/openapi": {
+      "types": "./dist/openapi.d.ts",
+      "import": "./dist/openapi.js",
+      "default": "./dist/openapi.js"
+    },
+    "./dom-consent-surface": {
+      "types": "./dist/domConsentSurface.d.ts",
+      "import": "./dist/domConsentSurface.js",
+      "default": "./dist/domConsentSurface.js"
+    },
+    "./reference/source": "./dist/referenceSources.json"
   },
   "sideEffects": false
 }
