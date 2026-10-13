@@ -14,6 +14,10 @@ versioned path.
   explicit failed/not-run states, and an isolated packed-artifact consumer smoke test.
 - Private parity recognizes a static local tool getter and rejects dynamic,
   asynchronous, generator, omitted-tool, and duplicate-tool variants.
+- The tool contract documents the `cancelled` result envelope
+  (`tool_cancelled`) the deployed registrar returns when the host aborts a
+  call, and its `version` is now `1.1.0`, so the unpublished 1.0.0 contract and
+  this one no longer share a label.
 
 ## [1.1.0] - SET_TO_PUBLISH_DAY
 
