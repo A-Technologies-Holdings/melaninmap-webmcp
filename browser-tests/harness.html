@@ -16,6 +16,11 @@ import { domConsentSurface } from "/.test-build/examples/domConsentSurface.js";
 
 const results = {};
 const started = {};
+// When a surface call had returned, so its deadline was already set.
+const armed = {};
+// Capture phase: runs before any dialog button's own click handler.
+const clicks = [];
+document.addEventListener("click", () => { clicks.push(performance.now()); }, true);
 const controllers = {};
 
 function request(id, timeoutMs) {
@@ -43,6 +48,8 @@ window.harness = {
   ready: true,
   results,
   started,
+  armed,
+  clicks,
   /** Full tool path: the envelope the agent would receive. */
   call(id, { timeoutMs } = {}) {
     const signal = begin(id);
@@ -56,6 +63,7 @@ window.harness = {
     domConsentSurface(request(id, timeoutMs), { signal }).then((result) => {
       results[id] = { decision: result.decision, at: performance.now() };
     });
+    armed[id] = performance.now();
   },
   abort(id) {
     controllers[id].abort();
