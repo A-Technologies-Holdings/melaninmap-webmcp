@@ -1,7 +1,8 @@
 # SLA-1554 source release candidate
 
 This is preparation for the first npm release, 1.1.0. It is not published,
-tagged or deployed. The changelog remains undated.
+tagged or deployed. The authorized first-release date is October 14, 2026;
+the changelog explicitly awaits registry publication proof.
 
 ## Source ownership
 
@@ -55,7 +56,7 @@ in another session is not proof of current authenticated scope permission or
 2FA readiness. Do not log credential or OTP values.
 
 After review and root-controlled integration, follow `RELEASING.md` from clean
-reviewed `main`: finalize the release date, validate that exact source, confirm
+reviewed `main`: validate the dated source, confirm
 authenticated scope access and 2FA, publish without bypassing lifecycle checks,
 verify registry integrity/exports, then create the tag and GitHub release under
 the separate release action. Manual publication does not establish npm OIDC
@@ -63,3 +64,22 @@ provenance. Private registry migration remains a separate reviewed change.
 
 Rollback: revert this integration commit as a unit. Existing private immutable
 package pins and the original public branches are unaffected.
+
+## Focused consumer-copy follow-up
+
+The GitHub finding at README lines 104–112 exposed a broken copied adapter: it
+referenced ../src outside the consumer. The README and adapter now use the
+supported DOM surface package export. Full markup customization still copies
+the real implementation from the packed src/domConsentSurface.ts and rewrites
+its two imports to the public package root; no duplicate implementation was added.
+The isolated artifact checker executes the documented import, copied adapter and
+customized source outside the checkout. Its pre-fix failure is preserved privately.
+A narrow source-only TypeScript mapping lets the package typecheck the adapter
+before dist exists; independent packed-consumer resolution does not use that map.
+Browser import maps make the same documented package entry executable in the
+unbundled playground and test harness. Runtime consent logic is unchanged.
+
+The founder authorized the October 14 first-release date. Notes remain explicit
+that registry publication has not occurred. Build 63 is evidence for the prior
+source only; this additive correction needs independent owner review and root's
+next bounded hosted run. No dependency, provider, authorization or schema change.

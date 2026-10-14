@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
+import ts from "@typescript/typescript6";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -25,6 +26,18 @@ try {
   assert.equal(packedPackage.version, sourcePackage.version, "installed and source package versions differ");
   assert(!packedPackage.dependencies || Object.keys(packedPackage.dependencies).length === 0, "runtime dependencies leaked into the artifact");
 
+  // Exercise the documented consumer import and files copied outside the package.
+  const readme = await readFile(path.join(packageDir, "README.md"), "utf8");
+  const documentedImport = readme.match(/import \{ domConsentSurface \} from "([^"]+)";/)?.[1];
+  assert(documentedImport, "README must demonstrate the DOM surface import");
+  await writeFile(path.join(scratch, "copied-example.mjs"),
+    await readFile(path.join(packageDir, "examples/domConsentSurface.ts"), "utf8"));
+  const customizableSource = (await readFile(path.join(packageDir, "src/domConsentSurface.ts"), "utf8"))
+    .replaceAll('from "./index.js"', 'from "@melaninmap/webmcp-consent"');
+  const customized = ts.transpileModule(customizableSource, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+  });
+  await writeFile(path.join(scratch, "customized-surface.mjs"), customized.outputText);
   const consumer = path.join(scratch, "consumer.mjs");
   await writeFile(consumer, [
     'import assert from "node:assert/strict";',
@@ -33,6 +46,13 @@ try {
     'import openapi from "@melaninmap/webmcp-consent/schemas/openapi";',
     'import reference from "@melaninmap/webmcp-consent/reference/source" with { type: "json" };',
     'assert.equal(typeof domConsentSurface, "function");',
+    `import { domConsentSurface as documentedSurface } from ${JSON.stringify(documentedImport)};`,
+    'import { domConsentSurface as copiedSurface } from "./copied-example.mjs";',
+    'import { domConsentSurface as customizedSurface } from "./customized-surface.mjs";',
+    'assert.equal(documentedSurface, domConsentSurface);',
+    'assert.equal(copiedSurface, domConsentSurface);',
+    'assert.equal(typeof customizedSurface, "function");',
+    'assert.deepEqual(await customizedSurface(null), { decision: "closed" });',
     'assert.match(openapi, /openapi:/);',
     'assert.equal(typeof reference["consentBridge.ts"], "string");',
     'import * as server from "@melaninmap/webmcp-consent/server";',
@@ -45,7 +65,7 @@ try {
   ].join("\n"));
   const smoke = run(process.execPath, [consumer], { cwd: scratch });
   assert.equal(smoke.status, 0, smoke.stderr);
-  console.log(`packed ${sourcePackage.version} artifact imports in an isolated consumer; optional React stays optional`);
+  console.log(`packed ${sourcePackage.version} artifact imports in an isolated consumer; documented import, copied example and customizable source resolve; optional React stays optional`);
 } finally {
   await rm(scratch, { recursive: true, force: true });
 }

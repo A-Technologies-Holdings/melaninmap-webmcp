@@ -10,9 +10,12 @@
   Every request is titled with its id so tests can tell dialogs apart.
 -->
 <body>
+<script type="importmap">
+{"imports": {"@melaninmap/webmcp-consent/dom-consent-surface": "/dist/domConsentSurface.js"}}
+</script>
 <script type="module">
 import { defineConsequentialTool } from "/dist/index.js";
-import { domConsentSurface } from "/.test-build/examples/domConsentSurface.js";
+import { domConsentSurface } from "@melaninmap/webmcp-consent/dom-consent-surface";
 
 const results = {};
 const started = {};

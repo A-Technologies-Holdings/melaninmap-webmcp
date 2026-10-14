@@ -11,8 +11,9 @@ green `main`. CI checks do not publish packages; releases remain manual.
 - `main` is clean (`git status --porcelain`) and the exact release commit
   passed `npm run check` in a recorded release session. A configured workflow
   or an older browser receipt is not proof for the release commit.
-- `CHANGELOG.md` has an entry for the version you are about to tag. An undated
-  release candidate is preparation, not publication evidence.
+- `CHANGELOG.md` has the authorized date for the version you are about to tag.
+  A dated release candidate is still preparation until registry proof confirms
+  publication.
 - The exact release commit passed `npm run test:browser`, with browser/client
   versions and skipped counts recorded. This suite is separate from `check`.
 - Private schema parity passed with `WEBMCP_LIVE_REGISTRAR` pointing at the
@@ -24,9 +25,10 @@ green `main`. CI checks do not publish packages; releases remain manual.
    1.1.0 version for this release. For later releases,
    bump the version — `npm version <patch|minor|major> --no-git-tag-version`
    (the tag is created below, after the checks pass). Commit the bump.
-2. Finalize `CHANGELOG.md`: keep the candidate undated until the authorized
-   release step, then set the 1.1.0 date and add a fresh `Unreleased` section
-   if there is follow-up work. Commit and validate that exact final source.
+2. Confirm `CHANGELOG.md` already has the authorized 1.1.0 release date and
+   still states that registry publication is unproven. Add a fresh `Unreleased`
+   section if there is follow-up work. Validate the exact final source; a
+   prepared date alone never establishes publication.
 3. `npm run check` — runs the whole gate: typecheck, contract drift, OpenAPI
    pointer resolution, build, the `node:test` behavioral suite, and
    `check:pack` (`publint` + `attw --pack` under the ESM-only profile).

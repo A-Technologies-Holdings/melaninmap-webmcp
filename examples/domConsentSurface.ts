@@ -1,2 +1,2 @@
-// Compatibility path for examples; the packaged implementation is the authority.
-export { domConsentSurface } from "../src/domConsentSurface.js";
+// Copyable adapter; customize the full src/domConsentSurface.ts implementation.
+export { domConsentSurface } from "@melaninmap/webmcp-consent/dom-consent-surface";

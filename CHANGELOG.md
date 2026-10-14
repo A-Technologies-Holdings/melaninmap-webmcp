@@ -5,12 +5,15 @@ project follows the compatibility contract in [CONTRIBUTING.md](./CONTRIBUTING.m
 published tool names and schemas are stable surfaces and only change on a new
 versioned path.
 
-## [1.1.0] - Unreleased
+## [1.1.0] - 2026-10-14
 
-Prepared first npm release; not published. The previously prepared 1.0.0 was
-never published. Its changes are included below. Set the date only during the
-authorized release step.
+Authorized first-release date; not yet published. Publication is confirmed only
+by registry proof. The previously prepared 1.0.0 was never published; its changes
+are included below.
 
+- Document the supported DOM surface import and copyable adapter. The full
+  implementation remains available for customization, with isolated packed
+  consumer checks for all three documented paths.
 - Add supported `schemas/openapi`, `dom-consent-surface` and
   `reference/source` package exports for versioned consumers. The OpenAPI
   export is a typed string; the reference export is build-derived JSON.

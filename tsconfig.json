@@ -9,7 +9,10 @@
     "noEmit": true,
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
-    "types": []
+    "types": [],
+    "paths": {
+      "@melaninmap/webmcp-consent/dom-consent-surface": ["./src/domConsentSurface.ts"]
+    }
   },
   "include": ["src", "examples"]
 }
