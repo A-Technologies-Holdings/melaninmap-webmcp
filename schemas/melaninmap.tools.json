@@ -3,7 +3,7 @@
   "title": "Melanin Map agent tool contract",
   "description": "The five tools melaninmap.app registers on the Web Model Context API. Published so an agent author can read the contract without executing the page, and so the descriptions can be reviewed as the interface they are.",
   "site": "https://melaninmap.app",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "tools": [
     {
       "name": "search_black_owned_directory",
@@ -201,6 +201,13 @@
         "ok": false,
         "code": "user_declined | busy",
         "message": "string"
+      }
+    },
+    "cancelled": {
+      "description": "Returned when the host cancelled the call (its AbortSignal fired) before the tool answered. It is not an outcome: a request already sent may or may not have completed, so do not tell the person the action did or did not happen, and do not retry automatically.",
+      "shape": {
+        "ok": false,
+        "code": "tool_cancelled"
       }
     },
     "failure": {

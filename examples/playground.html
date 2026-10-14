@@ -107,9 +107,12 @@ code { font: 0.875em/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
   </div>
 </main>
 
+<script type="importmap">
+{"imports": {"@melaninmap/webmcp-consent/dom-consent-surface": "../dist/domConsentSurface.js"}}
+</script>
 <script type="module">
 import { defineConsequentialTool, registerAgentToolsAsync } from '../dist/index.js';
-import { domConsentSurface } from '../.test-build/examples/domConsentSurface.js';
+import { domConsentSurface } from "@melaninmap/webmcp-consent/dom-consent-surface";
 
 const log = document.getElementById('log');
 const empty = document.getElementById('empty');

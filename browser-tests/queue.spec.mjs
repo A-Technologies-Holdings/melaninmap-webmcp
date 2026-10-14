@@ -72,23 +72,30 @@ test("expiry includes queue time: a queued prompt shows only what is left", asyn
   const budget = 20_000;
   await page.evaluate((ms) => window.harness.surface("A", { timeoutMs: ms }), LONG);
   await expect(dialogTitled(page, "A")).toBeVisible();
-  await page.evaluate((ms) => window.harness.surface("B", { timeoutMs: ms }), budget);
-
+  const armedB = await page.evaluate((ms) => {
+    window.harness.surface("B", { timeoutMs: ms });
+    return window.harness.armed.B;
+  }, budget);
   await dialogTitled(page, "A").getByRole("button", { name: "Not now" }).click();
   await expect(dialogTitled(page, "B")).toBeVisible();
 
-  const { queuedMs, durationMs } = await page.evaluate(() => {
+  const { answeredAt, durationMs } = await page.evaluate(() => {
     const fill = document.querySelector(".mm-consent__meter-fill");
     return {
-      queuedMs: window.harness.results.A.at - window.harness.started.B,
+      answeredAt: window.harness.clicks.at(-1),
       durationMs: Number.parseFloat(fill.style.getPropertyValue("--mm-consent-duration")),
     };
   });
-  expect(queuedMs).toBeGreaterThan(0);
+  // B's deadline was set before `armedB`; the capture-phase click time is
+  // read before the decline handler advances the queue to B. So B waited at
+  // least this long. The outer bracket (B's call start to A's result)
+  // over-counts: both ends sit outside the queue's own clock reads.
+  const queuedAtLeastMs = answeredAt - armedB;
+  expect(queuedAtLeastMs).toBeGreaterThan(0);
   // The countdown starts from the time remaining, not from the full budget.
   // (+5ms absorbs Date.now/performance.now rounding.)
   expect(durationMs).toBeLessThan(budget);
-  expect(durationMs).toBeLessThanOrEqual(budget - queuedMs + 5);
+  expect(durationMs).toBeLessThanOrEqual(budget - queuedAtLeastMs + 5);
 });
 
 test("cancelling the active request removes its dialog and the next one shows", async ({ page }) => {

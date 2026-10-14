@@ -49,7 +49,9 @@ export type HandoffConsentResolution =
 
 export type HandoffConsentOutcome =
   | HandoffConsentResolution
-  | { status: "busy" };
+  | { status: "busy" }
+  /** The host aborted the tool call; the card closed without an answer. */
+  | { status: "cancelled" };
 
 export const HANDOFF_CONSENT_TIMEOUT_MS = 60_000;
 
@@ -62,7 +64,9 @@ type PendingConsent = {
    * and burn the rate limit, so the consent lifecycle owns the key.
    */
   idempotencyKey: string;
-  resolve: (outcome: HandoffConsentResolution) => void;
+  resolve: (outcome: HandoffConsentOutcome) => void;
+  /** Detaches this entry's abort listener once it settles. */
+  cleanup: () => void;
   timeoutId: ReturnType<typeof setTimeout>;
 };
 
@@ -102,29 +106,48 @@ export function getPendingConsentRequest(): HandoffConsentRequest | null {
   return pending ? pending.request : null;
 }
 
+/** Settles exactly one pending entry; a stale entry is a no-op. */
+function settle(entry: PendingConsent, outcome: HandoffConsentOutcome): boolean {
+  if (pending !== entry) return false;
+  pending = null;
+  clearTimeout(entry.timeoutId);
+  entry.cleanup();
+  notify();
+  entry.resolve(outcome);
+  return true;
+}
+
 /**
  * Registrar-side entry point. Enqueues a consent request, notifies the React
  * side, and resolves when the person answers (or the 60s timeout declines).
  * If another request is already pending, resolves { status: "busy" }
- * immediately — cards never stack.
+ * immediately — cards never stack. When the host aborts the tool call
+ * (`signal`), the card closes and the request resolves { status: "cancelled" }.
  */
 export function requestHandoffConsent(
   request: HandoffConsentRequest,
+  options: { signal?: AbortSignal } = {},
 ): Promise<HandoffConsentOutcome> {
+  if (options.signal?.aborted) return Promise.resolve({ status: "cancelled" });
   if (pending) {
     return Promise.resolve({ status: "busy" });
   }
 
   return new Promise<HandoffConsentOutcome>((resolve) => {
-    const timeoutId = setTimeout(() => {
-      resolvePendingConsentRequest({ status: "declined" }, request);
-    }, HANDOFF_CONSENT_TIMEOUT_MS);
-    pending = {
+    // The abort listener closes over THIS entry, so an earlier prompt's
+    // signal can never cancel a later prompt.
+    const cancel = () => { settle(entry, { status: "cancelled" }); };
+    const entry: PendingConsent = {
       request,
       idempotencyKey: generateIdempotencyKey(),
       resolve,
-      timeoutId,
+      cleanup: () => options.signal?.removeEventListener("abort", cancel),
+      timeoutId: setTimeout(() => {
+        resolvePendingConsentRequest({ status: "declined" }, request);
+      }, HANDOFF_CONSENT_TIMEOUT_MS),
     };
+    pending = entry;
+    options.signal?.addEventListener("abort", cancel, { once: true });
     notify();
   });
 }
@@ -140,13 +163,10 @@ export function resolvePendingConsentRequest(answer: HandoffConsentAnswer, reque
     return false;
   }
   const current = pending;
-  pending = null;
-  clearTimeout(current.timeoutId);
-  notify();
-  current.resolve(
+  return settle(
+    current,
     answer.status === "confirmed"
       ? { ...answer, idempotencyKey: current.idempotencyKey }
       : answer,
   );
-  return true;
 }

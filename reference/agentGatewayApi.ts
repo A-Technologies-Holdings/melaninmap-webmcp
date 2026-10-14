@@ -105,11 +105,15 @@ export type AgentHandoffOpenResponse =
 async function postJson<T>(
   path: string,
   body: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<T> {
+  // The host's signal aborts the request itself, so a cancelled tool call
+  // stops waiting at once instead of holding a connection it will ignore.
   const response = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
 
   if (response.status === 429) {
@@ -143,30 +147,30 @@ export async function requestAgentSearch(args: {
   category?: string;
   kind?: string;
   limit?: number;
-}): Promise<AgentSearchResponse> {
+}, signal?: AbortSignal): Promise<AgentSearchResponse> {
   return postJson<AgentSearchResponse>("/api/agent/search", {
     installationId: args.installationId,
     query: args.query,
     category: args.category,
     kind: args.kind,
     limit: args.limit,
-  });
+  }, signal);
 }
 
 export async function requestAgentBusiness(args: {
   externalId: string;
-}): Promise<AgentBusinessResponse> {
+}, signal?: AbortSignal): Promise<AgentBusinessResponse> {
   return postJson<AgentBusinessResponse>("/api/agent/business", {
     externalId: args.externalId,
-  });
+  }, signal);
 }
 
 export async function requestAgentVerification(args: {
   externalId: string;
-}): Promise<AgentVerificationResponse> {
+}, signal?: AbortSignal): Promise<AgentVerificationResponse> {
   return postJson<AgentVerificationResponse>("/api/agent/verification", {
     externalId: args.externalId,
-  });
+  }, signal);
 }
 
 export async function recordAgentAction(args: {
@@ -175,14 +179,14 @@ export async function recordAgentAction(args: {
   action: "tap" | "save" | "directions";
   targetType: string;
   targetId: string;
-}): Promise<AgentActionResponse> {
+}, signal?: AbortSignal): Promise<AgentActionResponse> {
   return postJson<AgentActionResponse>("/api/agent/action", {
     installationId: args.installationId,
     recommendationId: args.recommendationId,
     action: args.action,
     targetType: args.targetType,
     targetId: args.targetId,
-  });
+  }, signal);
 }
 
 /** Exchange the visible card's UI signal for an operation-bound server proof. */
@@ -193,7 +197,7 @@ export async function requestAgentHandoffConsent(args: {
   channel: "event_detail";
   consentToken: string;
   idempotencyKey: string;
-}): Promise<AgentHandoffConsentResponse> {
+}, signal?: AbortSignal): Promise<AgentHandoffConsentResponse> {
   return postJson<AgentHandoffConsentResponse>("/api/agent/handoff-consent", {
     installationId: args.installationId,
     recommendationId: args.recommendationId,
@@ -201,7 +205,7 @@ export async function requestAgentHandoffConsent(args: {
     channel: args.channel,
     consentToken: args.consentToken,
     idempotencyKey: args.idempotencyKey,
-  });
+  }, signal);
 }
 
 /**
@@ -218,7 +222,7 @@ export async function requestAgentHandoff(args: {
   consentProof: string;
   /** Minted once per consent-card open (consentBridge) so retries replay. */
   idempotencyKey: string;
-}): Promise<AgentHandoffResponse> {
+}, signal?: AbortSignal): Promise<AgentHandoffResponse> {
   return postJson<AgentHandoffResponse>("/api/agent/handoff", {
     installationId: args.installationId,
     recommendationId: args.recommendationId,
@@ -228,7 +232,7 @@ export async function requestAgentHandoff(args: {
     consentToken: args.consentToken,
     consentProof: args.consentProof,
     idempotencyKey: args.idempotencyKey,
-  });
+  }, signal);
 }
 
 /** Redeem a signed, installation-owned handoff into its attributed URL. */
@@ -236,10 +240,10 @@ export async function openAgentHandoff(args: {
   installationId: string;
   token: string;
   idempotencyKey: string;
-}): Promise<AgentHandoffOpenResponse> {
+}, signal?: AbortSignal): Promise<AgentHandoffOpenResponse> {
   return postJson<AgentHandoffOpenResponse>("/api/agent/handoff-open", {
     installationId: args.installationId,
     token: args.token,
     idempotencyKey: args.idempotencyKey,
-  });
+  }, signal);
 }

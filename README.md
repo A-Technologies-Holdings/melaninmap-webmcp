@@ -104,12 +104,25 @@ const search = defineReadTool({
 A consequential tool requires a `ConsentSurface` and a description of what the
 person is agreeing to. Both are mandatory arguments.
 
-The example surface is not a package export: copy `examples/domConsentSurface.ts`
-(and `examples/consent-surface.css`) into your app and change its import to
-`@melaninmap/webmcp-consent`.
+Import the built DOM surface from the supported package export below. With a
+bundler that supports CSS imports, load its default stylesheet once per page:
 
 ```ts
-import { domConsentSurface } from "./examples/domConsentSurface";
+import "@melaninmap/webmcp-consent/consent-surface.css";
+```
+
+Without CSS import support, copy `examples/consent-surface.css` into your app
+and load it once per page. Its `mm-consent__*` classes and CSS custom properties
+let you restyle the surface.
+
+`examples/domConsentSurface.ts` is a copyable adapter that re-exports this same
+package entry. For markup or behavior customization, copy the full implementation
+in `src/domConsentSurface.ts` from the package into your app, then change both
+`"./index.js"` imports to `"@melaninmap/webmcp-consent"`. Keep the decline focus,
+trusted-event checks, request-id binding, cancellation and deadline safeguards.
+
+```ts
+import { domConsentSurface } from "@melaninmap/webmcp-consent/dom-consent-surface";
 
 const handoff = defineConsequentialTool({
   name: "request_handoff",
@@ -143,9 +156,10 @@ const handoff = defineConsequentialTool({
 await registerAgentToolsAsync([search, handoff]);
 ```
 
-The example surface ships with a default look in
+The surface ships with a default look through the supported
+`@melaninmap/webmcp-consent/consent-surface.css` export, backed by
 [`examples/consent-surface.css`](./examples/consent-surface.css): load it once per
-page. Every element carries an `mm-consent__*` class and every color, radius and
+page using your CSS-capable bundler or a copied stylesheet. Every element carries an `mm-consent__*` class and every color, radius and
 font is a custom property on `.mm-consent`, so rebranding is an override, not a
 fork. It follows the light/dark preference and honors reduced motion and forced
 colors.
@@ -243,7 +257,8 @@ consentQueue.subscribe(() => {
 });
 ```
 
-`examples/domConsentSurface.ts` is built exactly this way. The snapshot is
+`src/domConsentSurface.ts`, exposed by the DOM surface package entry, is built
+exactly this way. The snapshot is
 frozen and stays the same object while its request is displayed; render its
 `timeoutMs` (the time left when it reached the screen), not the original
 timeout.
@@ -287,7 +302,7 @@ Enter meant for one request can confirm the next. `confirm` must receive the cli
 `nativeEvent.isTrusted`. Prompts never render on the server: the server
 snapshot is always `null`. The hook renders nothing itself — markup, focus
 handling and styling stay yours; the behavior rules in
-`examples/domConsentSurface.ts` are a good checklist.
+`src/domConsentSurface.ts` are a good checklist.
 
 `registerAgentTools` is fully feature-detected. In any browser without either
 proposed registrar API it is a silent no-op that costs two `modelContext` lookups. Load

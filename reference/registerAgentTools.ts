@@ -118,6 +118,18 @@ function isRetryableGatewayError(error: unknown): boolean {
 }
 
 /**
+ * The host cancelled the call (its AbortSignal fired). This is not an
+ * outcome: a request already sent may or may not have completed, so the
+ * contract's `cancelled` envelope tells the model not to report either way.
+ */
+const CANCELLED = { ok: false, code: "tool_cancelled" } as const;
+
+/** A failure after the host aborted is the cancellation, not a network error. */
+function failureEnvelope(error: unknown, signal?: AbortSignal): { ok: false; code: string } {
+  return signal?.aborted ? CANCELLED : errorEnvelope(error);
+}
+
+/**
  * Steer the placeholder tab the consent card opened during the Confirm click
  * to the redeemed destination; fall back to a direct open (which strict
  * browsers may block post-await) only when no placeholder exists. Returns
@@ -164,12 +176,14 @@ function closeNavigationHandle(handle: Window | null): void {
  */
 async function openConfirmedHandoff(
   args: Parameters<typeof openAgentHandoff>[0],
+  signal?: AbortSignal,
 ): ReturnType<typeof openAgentHandoff> {
   try {
-    return await openAgentHandoff(args);
+    return await openAgentHandoff(args, signal);
   } catch (error) {
-    if (!isRetryableGatewayError(error)) throw error;
-    return openAgentHandoff(args);
+    // A cancelled call is never retried: nobody is waiting for the answer.
+    if (signal?.aborted || !isRetryableGatewayError(error)) throw error;
+    return openAgentHandoff(args, signal);
   }
 }
 
@@ -181,10 +195,11 @@ async function openConfirmedHandoff(
  */
 async function createConfirmedHandoff(
   args: Parameters<typeof requestAgentHandoff>[0],
+  signal?: AbortSignal,
 ): ReturnType<typeof requestAgentHandoff> {
   return retryOnceOnTransient(
-    () => requestAgentHandoff(args),
-    isRetryableGatewayError,
+    () => requestAgentHandoff(args, signal),
+    (error) => !signal?.aborted && isRetryableGatewayError(error),
   );
 }
 
@@ -234,7 +249,8 @@ const searchTool: ModelContextTool = {
     required: [],
   },
   annotations: { readOnlyHint: true },
-  execute: async (args) => {
+  execute: async (args, { signal } = {}) => {
+    if (signal?.aborted) return toToolResult(CANCELLED);
     try {
       const response = await requestAgentSearch({
         installationId: getAgentInstallationId(),
@@ -242,13 +258,13 @@ const searchTool: ModelContextTool = {
         category: optionalString(args.category),
         kind: optionalString(args.kind),
         limit: optionalNumber(args.limit),
-      });
+      }, signal);
       if ("items" in response && Array.isArray(response.items)) {
         rememberTargetNames(response.items);
       }
       return toToolResult(response);
     } catch (error) {
-      return toToolResult(errorEnvelope(error));
+      return toToolResult(failureEnvelope(error, signal));
     }
   },
 };
@@ -272,15 +288,16 @@ const businessDetailsTool: ModelContextTool = {
     required: ["externalId"],
   },
   annotations: { readOnlyHint: true },
-  execute: async (args) => {
+  execute: async (args, { signal } = {}) => {
+    if (signal?.aborted) return toToolResult(CANCELLED);
     const externalId = optionalString(args.externalId);
     if (!externalId) {
       return toToolResult({ ok: false, code: "invalid_arguments" });
     }
     try {
-      return toToolResult(await requestAgentBusiness({ externalId }));
+      return toToolResult(await requestAgentBusiness({ externalId }, signal));
     } catch (error) {
-      return toToolResult(errorEnvelope(error));
+      return toToolResult(failureEnvelope(error, signal));
     }
   },
 };
@@ -304,15 +321,16 @@ const verificationTool: ModelContextTool = {
     required: ["externalId"],
   },
   annotations: { readOnlyHint: true },
-  execute: async (args) => {
+  execute: async (args, { signal } = {}) => {
+    if (signal?.aborted) return toToolResult(CANCELLED);
     const externalId = optionalString(args.externalId);
     if (!externalId) {
       return toToolResult({ ok: false, code: "invalid_arguments" });
     }
     try {
-      return toToolResult(await requestAgentVerification({ externalId }));
+      return toToolResult(await requestAgentVerification({ externalId }, signal));
     } catch (error) {
-      return toToolResult(errorEnvelope(error));
+      return toToolResult(failureEnvelope(error, signal));
     }
   },
 };
@@ -365,7 +383,8 @@ const recordInterestTool: ModelContextTool = {
     },
     required: ["recommendationId", "action", "targetType", "targetId"],
   },
-  execute: async (args) => {
+  execute: async (args, { signal } = {}) => {
+    if (signal?.aborted) return toToolResult(CANCELLED);
     const recommendationId = optionalString(args.recommendationId);
     const action = optionalString(args.action);
     const targetType = optionalString(args.targetType);
@@ -386,10 +405,10 @@ const recordInterestTool: ModelContextTool = {
         action: action as InterestAction,
         targetType,
         targetId,
-      });
+      }, signal);
       return toToolResult(response);
     } catch (error) {
-      return toToolResult(errorEnvelope(error));
+      return toToolResult(failureEnvelope(error, signal));
     }
   },
 };
@@ -414,14 +433,14 @@ function rememberTargetNames(items: readonly AgentSearchItem[]): void {
   }
 }
 
-async function lookupTargetName(externalId: string): Promise<string> {
+async function lookupTargetName(externalId: string, signal?: AbortSignal): Promise<string> {
   // Names seen in this session's search results cover the event/tour case.
   const remembered = knownTargetNames.get(externalId);
   if (remembered) return remembered;
   // Best-effort business lookup covers business ids; falls back to the raw
-  // externalId on any failure.
+  // externalId on any failure, including a cancellation (checked next).
   try {
-    const details = await requestAgentBusiness({ externalId });
+    const details = await requestAgentBusiness({ externalId }, signal);
     if (details.ok === true && typeof details.business.name === "string") {
       const name = details.business.name.trim();
       if (name) return name;
@@ -463,7 +482,8 @@ const handoffTool: ModelContextTool = {
     required: ["recommendationId", "targetExternalId", "channel"],
   },
   annotations: { readOnlyHint: false },
-  execute: async (args) => {
+  execute: async (args, { signal } = {}) => {
+    if (signal?.aborted) return toToolResult(CANCELLED);
     const recommendationId = optionalString(args.recommendationId);
     const targetExternalId = optionalString(args.targetExternalId);
     if (!recommendationId || !targetExternalId) {
@@ -474,8 +494,15 @@ const handoffTool: ModelContextTool = {
     // surface, so never let a creative agent-supplied string break the chain.
     const channel = "event_detail";
 
-    const targetName = await lookupTargetName(targetExternalId);
-    const outcome = await requestHandoffConsent({ targetName });
+    const targetName = await lookupTargetName(targetExternalId, signal);
+    const outcome = await requestHandoffConsent({ targetName }, { signal });
+
+    if (signal?.aborted || outcome.status === "cancelled") {
+      // A confirmation that lost the race with cancellation already opened a
+      // placeholder tab inside the click; do not leave it behind.
+      if (outcome.status === "confirmed") closeNavigationHandle(outcome.navigationHandle);
+      return toToolResult(CANCELLED);
+    }
 
     // Refusals are written as instructions: the model acts on this string,
     // and a bare code gives it nothing to do but guess — or retry.
@@ -505,7 +532,7 @@ const handoffTool: ModelContextTool = {
         channel,
         consentToken: outcome.consentToken,
         idempotencyKey: outcome.idempotencyKey,
-      });
+      }, signal);
       if (consent.ok !== true) {
         closeNavigationHandle(outcome.navigationHandle);
         return toToolResult(consent);
@@ -519,7 +546,7 @@ const handoffTool: ModelContextTool = {
         consentToken: outcome.consentToken,
         consentProof: consent.consentProof,
         idempotencyKey: outcome.idempotencyKey,
-      });
+      }, signal);
       if (response.ok !== true) {
         closeNavigationHandle(outcome.navigationHandle);
         return toToolResult(response);
@@ -528,7 +555,13 @@ const handoffTool: ModelContextTool = {
         installationId,
         token: response.token,
         idempotencyKey: `${outcome.idempotencyKey}:open`,
-      });
+      }, signal);
+      // Cancelled after redemption: report the redeemed result truthfully,
+      // but do not steer a tab the host no longer wants opened.
+      if (signal?.aborted) {
+        closeNavigationHandle(outcome.navigationHandle);
+        return toToolResult(opened.ok === true ? { ...opened, navigated: false } : opened);
+      }
       // The person explicitly confirmed this hand-off, so take them to the
       // redeemed destination the way the in-app client does. The consent card
       // opened a placeholder tab synchronously inside the Confirm click
@@ -551,7 +584,7 @@ const handoffTool: ModelContextTool = {
       );
     } catch (error) {
       closeNavigationHandle(outcome.navigationHandle);
-      return toToolResult(errorEnvelope(error));
+      return toToolResult(failureEnvelope(error, signal));
     }
   },
 };
