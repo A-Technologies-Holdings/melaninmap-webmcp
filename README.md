@@ -104,9 +104,16 @@ const search = defineReadTool({
 A consequential tool requires a `ConsentSurface` and a description of what the
 person is agreeing to. Both are mandatory arguments.
 
-Import the built DOM surface from the supported package export below. Copy
-`examples/consent-surface.css` into your app and load it once per page; its
-`mm-consent__*` classes and CSS custom properties let you restyle the surface.
+Import the built DOM surface from the supported package export below. With a
+bundler that supports CSS imports, load its default stylesheet once per page:
+
+```ts
+import "@melaninmap/webmcp-consent/consent-surface.css";
+```
+
+Without CSS import support, copy `examples/consent-surface.css` into your app
+and load it once per page. Its `mm-consent__*` classes and CSS custom properties
+let you restyle the surface.
 
 `examples/domConsentSurface.ts` is a copyable adapter that re-exports this same
 package entry. For markup or behavior customization, copy the full implementation
@@ -149,9 +156,10 @@ const handoff = defineConsequentialTool({
 await registerAgentToolsAsync([search, handoff]);
 ```
 
-The example surface ships with a default look in
+The surface ships with a default look through the supported
+`@melaninmap/webmcp-consent/consent-surface.css` export, backed by
 [`examples/consent-surface.css`](./examples/consent-surface.css): load it once per
-page. Every element carries an `mm-consent__*` class and every color, radius and
+page using your CSS-capable bundler or a copied stylesheet. Every element carries an `mm-consent__*` class and every color, radius and
 font is a custom property on `.mm-consent`, so rebranding is an override, not a
 fork. It follows the light/dark preference and honors reduced motion and forced
 colors.

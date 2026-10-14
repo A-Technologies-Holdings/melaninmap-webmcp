@@ -108,7 +108,11 @@
       "import": "./dist/domConsentSurface.js",
       "default": "./dist/domConsentSurface.js"
     },
+    "./consent-surface.css": {
+      "types": "./examples/consent-surface.css.d.ts",
+      "default": "./examples/consent-surface.css"
+    },
     "./reference/source": "./dist/referenceSources.json"
   },
-  "sideEffects": false
+  "sideEffects": ["./examples/consent-surface.css"]
 }

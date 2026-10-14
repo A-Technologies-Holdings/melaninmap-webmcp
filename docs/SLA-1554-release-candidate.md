@@ -83,3 +83,18 @@ The founder authorized the October 14 first-release date. Notes remain explicit
 that registry publication has not occurred. Build 63 is evidence for the prior
 source only; this additive correction needs independent owner review and root's
 next bounded hosted run. No dependency, provider, authorization or schema change.
+
+## Companion stylesheet follow-up
+
+A complete review-thread snapshot at 9acdfe0 contained three threads with no
+additional pages. Both README duplicates were resolved; the stylesheet finding
+was valid and reproduced as ERR_PACKAGE_PATH_NOT_EXPORTED in an isolated packed
+consumer. The package now exposes consent-surface.css through a supported subpath,
+and marks only that CSS asset as a side effect so bundlers preserve its import.
+A side-effect-only declaration exposes no JavaScript values and lets the existing
+package analysis resolve the asset without exclusions or relaxed checks.
+The README documents CSS-capable bundlers and retains the copy fallback. The
+packed artifact checker resolves and reads the exported stylesheet and checks
+the documented path and precise side-effect metadata. No CSS bytes, consent
+implementation, dependency or lockfile changed. Build 65 belongs to the prior
+source; this additive source needs root's next exact-head review and bounded run.

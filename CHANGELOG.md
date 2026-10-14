@@ -14,8 +14,8 @@ are included below.
 - Document the supported DOM surface import and copyable adapter. The full
   implementation remains available for customization, with isolated packed
   consumer checks for all three documented paths.
-- Add supported `schemas/openapi`, `dom-consent-surface` and
-  `reference/source` package exports for versioned consumers. The OpenAPI
+- Add supported `schemas/openapi`, `dom-consent-surface`, `consent-surface.css`
+  and `reference/source` package exports for versioned consumers. The OpenAPI
   export is a typed string; the reference export is build-derived JSON.
 - Real-browser checks cover host rejection, missing API fallback, duplicate
   registration and unregister. Queued-expiry assertions now measure within

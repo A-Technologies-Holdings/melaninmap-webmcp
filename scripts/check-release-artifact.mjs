@@ -14,7 +14,7 @@ try {
   const packed = run("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", scratch], { cwd: root });
   assert.equal(packed.status, 0, packed.stderr);
   const [{ filename, files }] = JSON.parse(packed.stdout);
-  for (const required of ["dist/domConsentSurface.js", "dist/domConsentSurface.d.ts", "dist/openapi.js", "dist/openapi.d.ts", "dist/referenceSources.json", "dist/index.js", "dist/index.d.ts", "dist/react.js", "dist/server.js", "compatibility/webmcp.json", "compatibility/webmcp.schema.json"]) {
+  for (const required of ["examples/consent-surface.css", "examples/consent-surface.css.d.ts", "dist/domConsentSurface.js", "dist/domConsentSurface.d.ts", "dist/openapi.js", "dist/openapi.d.ts", "dist/referenceSources.json", "dist/index.js", "dist/index.d.ts", "dist/react.js", "dist/server.js", "compatibility/webmcp.json", "compatibility/webmcp.schema.json"]) {
     assert(files.some(file => file.path === required), `release artifact is missing ${required}`);
   }
   const packageDir = path.join(scratch, "node_modules/@melaninmap/webmcp-consent");
@@ -28,6 +28,8 @@ try {
 
   // Exercise the documented consumer import and files copied outside the package.
   const readme = await readFile(path.join(packageDir, "README.md"), "utf8");
+  const stylesheetImport = "@melaninmap/webmcp-consent/consent-surface.css";
+  const documentedStylesheet = readme.match(/import "([^"]+\.css)";/)?.[1];
   const documentedImport = readme.match(/import \{ domConsentSurface \} from "([^"]+)";/)?.[1];
   assert(documentedImport, "README must demonstrate the DOM surface import");
   await writeFile(path.join(scratch, "copied-example.mjs"),
@@ -41,11 +43,14 @@ try {
   const consumer = path.join(scratch, "consumer.mjs");
   await writeFile(consumer, [
     'import assert from "node:assert/strict";',
+    'import { readFileSync } from "node:fs";',
     'import * as root from "@melaninmap/webmcp-consent";',
     'import { domConsentSurface } from "@melaninmap/webmcp-consent/dom-consent-surface";',
     'import openapi from "@melaninmap/webmcp-consent/schemas/openapi";',
     'import reference from "@melaninmap/webmcp-consent/reference/source" with { type: "json" };',
     'assert.equal(typeof domConsentSurface, "function");',
+    `const stylesheet = readFileSync(new URL(import.meta.resolve(${JSON.stringify(stylesheetImport)})), "utf8");`,
+    'assert.match(stylesheet, /\\.mm-consent/);',
     `import { domConsentSurface as documentedSurface } from ${JSON.stringify(documentedImport)};`,
     'import { domConsentSurface as copiedSurface } from "./copied-example.mjs";',
     'import { domConsentSurface as customizedSurface } from "./customized-surface.mjs";',
@@ -65,7 +70,9 @@ try {
   ].join("\n"));
   const smoke = run(process.execPath, [consumer], { cwd: scratch });
   assert.equal(smoke.status, 0, smoke.stderr);
-  console.log(`packed ${sourcePackage.version} artifact imports in an isolated consumer; documented import, copied example and customizable source resolve; optional React stays optional`);
+  assert.equal(documentedStylesheet, stylesheetImport, "README must document the supported CSS export");
+  assert.deepEqual(packedPackage.sideEffects, ["./examples/consent-surface.css"], "preserve the stylesheet without marking JS as side-effectful");
+  console.log(`packed ${sourcePackage.version} artifact imports in an isolated consumer; documented import, stylesheet, copied example and customizable source resolve; optional React stays optional`);
 } finally {
   await rm(scratch, { recursive: true, force: true });
 }
