@@ -13,7 +13,7 @@ try {
   const packed = run("npm", ["pack", "--json", "--ignore-scripts", "--pack-destination", scratch], { cwd: root });
   assert.equal(packed.status, 0, packed.stderr);
   const [{ filename, files }] = JSON.parse(packed.stdout);
-  for (const required of ["dist/index.js", "dist/index.d.ts", "dist/react.js", "dist/server.js", "compatibility/webmcp.json", "compatibility/webmcp.schema.json"]) {
+  for (const required of ["dist/domConsentSurface.js", "dist/domConsentSurface.d.ts", "dist/openapi.js", "dist/openapi.d.ts", "dist/referenceSources.json", "dist/index.js", "dist/index.d.ts", "dist/react.js", "dist/server.js", "compatibility/webmcp.json", "compatibility/webmcp.schema.json"]) {
     assert(files.some(file => file.path === required), `release artifact is missing ${required}`);
   }
   const packageDir = path.join(scratch, "node_modules/@melaninmap/webmcp-consent");
@@ -29,6 +29,12 @@ try {
   await writeFile(consumer, [
     'import assert from "node:assert/strict";',
     'import * as root from "@melaninmap/webmcp-consent";',
+    'import { domConsentSurface } from "@melaninmap/webmcp-consent/dom-consent-surface";',
+    'import openapi from "@melaninmap/webmcp-consent/schemas/openapi";',
+    'import reference from "@melaninmap/webmcp-consent/reference/source" with { type: "json" };',
+    'assert.equal(typeof domConsentSurface, "function");',
+    'assert.match(openapi, /openapi:/);',
+    'assert.equal(typeof reference["consentBridge.ts"], "string");',
     'import * as server from "@melaninmap/webmcp-consent/server";',
     'import evidence from "@melaninmap/webmcp-consent/compatibility" with { type: "json" };',
     'assert.equal(typeof root.defineConsequentialTool, "function");',

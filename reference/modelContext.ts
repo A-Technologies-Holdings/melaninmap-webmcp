@@ -23,7 +23,15 @@ export type ModelContextTool = {
   inputSchema: Record<string, unknown>;
   /** MCP-style behavior hints (e.g. readOnlyHint). */
   annotations?: { readOnlyHint?: boolean } & Record<string, unknown>;
-  execute: (args: Record<string, unknown>) => Promise<ModelContextToolResult>;
+  execute: (
+    args: Record<string, unknown>,
+    options?: ModelContextToolExecuteOptions,
+  ) => Promise<ModelContextToolResult>;
+};
+
+/** What the host passes to `execute`. The signal aborts when it cancels the call. */
+export type ModelContextToolExecuteOptions = {
+  signal?: AbortSignal;
 };
 
 export type ModelContextRegisterOptions = {

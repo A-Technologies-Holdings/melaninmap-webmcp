@@ -5,8 +5,18 @@ project follows the compatibility contract in [CONTRIBUTING.md](./CONTRIBUTING.m
 published tool names and schemas are stable surfaces and only change on a new
 versioned path.
 
-## [Unreleased]
+## [1.1.0] - Unreleased
 
+Prepared first npm release; not published. The previously prepared 1.0.0 was
+never published. Its changes are included below. Set the date only during the
+authorized release step.
+
+- Add supported `schemas/openapi`, `dom-consent-surface` and
+  `reference/source` package exports for versioned consumers. The OpenAPI
+  export is a typed string; the reference export is build-derived JSON.
+- Real-browser checks cover host rejection, missing API fallback, duplicate
+  registration and unregister. Queued-expiry assertions now measure within
+  the queue clock bracket without relaxing the deadline bound.
 - Registration abort cleanup now releases the complete invocation reservation
   immediately, including names still pending at the host, while ownership
   guards prevent late settlements from disturbing a same-host remount.
@@ -14,12 +24,17 @@ versioned path.
   explicit failed/not-run states, and an isolated packed-artifact consumer smoke test.
 - Private parity recognizes a static local tool getter and rejects dynamic,
   asynchronous, generator, omitted-tool, and duplicate-tool variants.
-
-## [1.1.0] - SET_TO_PUBLISH_DAY
-
-Not yet published. 1.0.0 below was prepared and dated but never published to
-npm; its changes ship in this release, which is the first one intended for
-npm. Set the date on the day it is published.
+- The tool contract documents the `cancelled` result envelope
+  (`tool_cancelled`) the deployed registrar returns when the host aborts a
+  call, and its `version` is now `1.1.0`, so the unpublished 1.0.0 contract and
+  this one no longer share a label.
+- The reference registrar honors host cancellation like the deployed one.
+  Each tool reads the `signal` its host passes to `execute`. An abort before
+  or during a gateway call answers `tool_cancelled` and is never retried.
+  The consent card closes when the call is aborted, with the listener bound
+  to its own prompt. A confirmation that loses the race closes its
+  placeholder tab, and an abort after redemption reports `navigated: false`.
+  The reference gateway client forwards the signal to `fetch`.
 
 - **Host detection prefers `document.modelContext`.** The spec moved the
   API from `Navigator` to `Document`, and Chrome 152 and later expose it only
@@ -147,10 +162,6 @@ npm. Set the date on the day it is published.
   surface and compares it with `spec/webmcp-surface.json`; network failures
   are reported separately from drift. Findings as of 2026-10-03 are in
   `docs/spec-drift.md`. No runtime change.
-
-## [1.0.0] - 2026-10-03
-
-First public release.
 
 - `defineReadTool` / `defineConsequentialTool` — tools never throw into the
   agent runtime; consequential tools cannot reach their action without a

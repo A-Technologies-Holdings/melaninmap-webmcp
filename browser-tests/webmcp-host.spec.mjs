@@ -145,3 +145,24 @@ test("resultFormat json reaches the agent as the envelope itself, not double-enc
   // The default still arrives wrapped, with the refusal as an escaped string.
   expect(Array.isArray(JSON.parse(results.mcp).content)).toBe(true);
 });
+
+test('native duplicate registration rejects and unregister removes only the owned tool', async ({ page }) => {
+  const observed = await page.evaluate(async () => {
+    const { defineReadTool, registerAgentToolsAsync } = await import('/dist/index.js');
+    const tool = defineReadTool({ name: 'native_lifecycle_fixture', description: 'fixture', inputSchema: {}, parseArgs: value => value, execute: async () => ({ ok: true }) });
+    const owner = new AbortController();
+    await document.modelContext.registerTool(tool, { signal: owner.signal });
+    const before = (await document.modelContext.getTools()).map(tool => tool.name);
+    let duplicateError;
+    try { await document.modelContext.registerTool(tool); } catch (error) { duplicateError = error.name; }
+    const rejected = await registerAgentToolsAsync([tool]);
+    owner.abort();
+    const after = (await document.modelContext.getTools()).map(tool => tool.name);
+    return { before, after, duplicateError, rejected };
+  });
+  expect(observed.before).toContain('native_lifecycle_fixture');
+  expect(observed.duplicateError).toBe('InvalidStateError');
+  expect(observed.rejected.registered).toBe(false);
+  expect(observed.after).not.toContain('native_lifecycle_fixture');
+  expect(observed.after).toContain(TOOL);
+});
