@@ -18,6 +18,13 @@ versioned path.
   (`tool_cancelled`) the deployed registrar returns when the host aborts a
   call, and its `version` is now `1.1.0`, so the unpublished 1.0.0 contract and
   this one no longer share a label.
+- The reference registrar honors host cancellation like the deployed one.
+  Each tool reads the `signal` its host passes to `execute`. An abort before
+  or during a gateway call answers `tool_cancelled` and is never retried.
+  The consent card closes when the call is aborted, with the listener bound
+  to its own prompt. A confirmation that loses the race closes its
+  placeholder tab, and an abort after redemption reports `navigated: false`.
+  The reference gateway client forwards the signal to `fetch`.
 
 ## [1.1.0] - SET_TO_PUBLISH_DAY
 
