@@ -13,7 +13,7 @@
       "sourceCommit": "070ae8e86d7df3c47410b5ca882e7a84a6785108",
       "engine": "Chromium",
       "engineVersion": "153.0.8010.12",
-      "playwrightVersion": "1.63.0",
+      "playwrightVersion": "1.64.0",
       "command": "npm run test:browser",
       "surface": "document.modelContext with --enable-features=WebMCP",
       "receipt": {

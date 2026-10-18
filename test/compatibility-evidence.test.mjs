@@ -29,7 +29,7 @@ test('compatibility schema permits a future passed browser run with a receipt', 
  const scratch = await mkdtemp(path.join(os.tmpdir(), 'webmcp-compat-'));
  try {
   const candidate = structuredClone(source);
-  candidate.browser.currentRun = { status: 'passed', observedAt: '2026-10-08T12:00:00Z', sourceCommit: 'a'.repeat(40), engine: 'Chromium', engineVersion: '153.0.8010.12', playwrightVersion: '1.63.0', command: 'npm run test:browser', surface: 'synthetic validation fixture', receipt: { suite: 'fixture', result: 'passed' } };
+  candidate.browser.currentRun = { status: 'passed', observedAt: '2026-10-08T12:00:00Z', sourceCommit: 'a'.repeat(40), engine: 'Chromium', engineVersion: '153.0.8010.12', playwrightVersion: '1.64.0', command: 'npm run test:browser', surface: 'synthetic validation fixture', receipt: { suite: 'fixture', result: 'passed' } };
   const file = path.join(scratch, 'evidence.json'); await writeFile(file, JSON.stringify(candidate));
   const result = run(file); assert.equal(result.status, 0, result.stderr);
  } finally { await rm(scratch, { recursive: true, force: true }) }
