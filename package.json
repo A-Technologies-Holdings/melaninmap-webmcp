@@ -60,7 +60,7 @@
     "@playwright/test": "1.64.0",
     "@types/react": "19.3.0",
     "@typescript/typescript6": "6.0.2",
-    "happy-dom": "20.14.6",
+    "happy-dom": "21.0.4",
     "publint": "0.3.25",
     "react": "19.3.0",
     "react-dom": "19.3.0",
