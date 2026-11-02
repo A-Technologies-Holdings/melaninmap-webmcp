@@ -93,15 +93,30 @@ At 2026-11-02T01:40:17Z, an HTTPS fetch returned 200 with the WebMCP
 `origin-trial` header and `x-melanin-deploy-sha` equal to
 `108898080ce6a0ead5bd3bdea01c3c2df7e1c02f`. All eight script bundles
 referenced by the initial HTML were fetched; none contained `modelContext`.
-This checks the initial page surface, not every lazy-loaded route.
+That initial-bundle scan does not cover dynamically loaded code and did not
+predict the actual browser result.
 
-Live origin-trial and production action evidence remain blocked on the
-private melaninmap.app application deploying its registrar for all five tools:
-`search_black_owned_directory`, `get_business_details`,
+Fresh Playwright Chromium 153.0.8010.12 profiles exposed
+`typeof document.modelContext === "object"`, both with and without an
+explicit WebMCP flag. The default profile's real `getTools()` returned all
+five tools: `search_black_owned_directory`, `get_business_details`,
 `check_ownership_verification`, `record_interest`, and
-`request_event_handoff`. That deployment must include the consent surface
-and the real server gateway behind consequential actions, with proof
-verification, single-use nonce consumption, rate limiting and idempotency.
-A multi-instance deployment needs atomic shared state. Confirm and decline
-paths must then be exercised against the live origin on the exact release
-commit before either compatibility status can pass.
+`request_event_handoff`. A real host-invoked search returned an event.
+
+At 2026-11-02T01:41:25Z, host-invoked `request_event_handoff` displayed the
+live consent dialog. Clicking Decline returned `user_declined` without a
+handoff request. A second invocation followed by Confirm posted to
+`/api/agent/handoff-consent` but returned `destination_unavailable` for the
+selected event (Heartbeat Saturdays). The successful consequential action
+and downstream gateway execution therefore remain unverified. No external
+ticketing handoff completed.
+
+These observations supersede the earlier no-tools finding above. They do
+not establish release compatibility: the private application's deploy SHA
+is not this package's release commit, private source parity was not run in
+this session, and the confirm path did not complete a successful action.
+`compatibility/webmcp.json` remains unchanged. The private application must
+provide a valid destination and deploy the intended release registrar,
+consent surface and server gateway, including proof verification, shared
+single-use nonce state, rate limiting and idempotency. Re-run both paths on
+the exact release source before recording either live status as passed.
