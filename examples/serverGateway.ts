@@ -42,6 +42,7 @@ export type GatewayRequest = {
   args: unknown;
   /** Server-observed caller key (network origin). Never a body field. */
   remoteKey: string;
+  /** Server-authenticated caller identity, never a client body field. */
   subject?: string;
   proof?: unknown;
   idempotencyKey?: string;
@@ -110,7 +111,11 @@ export function createConsentGateway(options: {
         return refuse("missing_idempotency_key", request);
       }
       const result = await idempotency.execute(
-        request.idempotencyKey,
+        JSON.stringify([
+          verification.claims.audience,
+          verification.claims.subject ?? null,
+          request.idempotencyKey,
+        ]),
         verification.claims.argsDigest,
         async () => {
           const value = await action(request.args);
@@ -127,6 +132,7 @@ export function createConsentGateway(options: {
         },
       );
       if (result.status === "conflict") return refuse("idempotency_conflict", request);
+      if (result.status === "capacity_exceeded") return refuse("idempotency_capacity", request);
       return {
         status: 200,
         body: { ok: true, replayed: result.status === "replayed", value: result.value ?? null },

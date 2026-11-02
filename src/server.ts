@@ -332,7 +332,9 @@ export type IdempotentResult<Value> =
   | { status: "executed"; value: Value }
   | { status: "replayed"; value: Value }
   /** Same key, different request fingerprint: a conflict, never a replay. */
-  | { status: "conflict" };
+  | { status: "conflict" }
+  /** No live record is evicted to admit a new action. Retry later. */
+  | { status: "capacity_exceeded" };
 
 export type IdempotencyStore = {
   /**
@@ -340,7 +342,8 @@ export type IdempotencyStore = {
    * fingerprint returns the first result without re-running; the same key
    * with a different fingerprint is a conflict. A rejected `run` is not
    * cached, so a transient failure may be retried. Concurrent duplicates
-   * share the in-flight call. Entries expire after the store's ttl.
+   * share the in-flight call. Entries expire one ttl after successful completion;
+   * pending actions never expire. Capacity exhaustion refuses new keys.
    */
   execute<Value>(
     key: string,
@@ -377,15 +380,15 @@ export function createInMemoryIdempotencyStore(options?: {
         if (existing.fingerprint !== fingerprint) return { status: "conflict" };
         return { status: "replayed", value: await existing.promise as never };
       }
-      if (entries.size >= maxEntries) {
-        const first = entries.keys().next().value as string | undefined;
-        if (first !== undefined) entries.delete(first);
-      }
-      const promise = (async () => run())();
-      const entry: Entry = { fingerprint, expiresAt: nowFn() + ttlMs, promise };
+      if (entries.size >= maxEntries) return { status: "capacity_exceeded" };
+      // Install the entry before invoking user code, including synchronous callbacks.
+      const promise = Promise.resolve().then(run);
+      const entry: Entry = { fingerprint, expiresAt: Infinity, promise };
       entries.set(key, entry);
       try {
-        return { status: "executed", value: await promise as never };
+        const value = await promise;
+        entry.expiresAt = nowFn() + ttlMs;
+        return { status: "executed", value: value as never };
       } catch (error) {
         if (entries.get(key) === entry) entries.delete(key);
         throw error;

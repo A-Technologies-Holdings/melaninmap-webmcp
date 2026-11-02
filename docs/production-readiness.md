@@ -18,7 +18,10 @@ framework-agnostic reference:
 - `performConsequentialAction` verifies the proof single-use through the
   nonce ledger, then runs the action under an idempotency key: a retry
   replays the first result, and the same key with different arguments is a
-  conflict, never a second action.
+  conflict, never a second action. Cache keys include the verified subject
+  and audience, so shared stores cannot replay another caller's result.
+  Capacity exhaustion refuses new actions rather than evicting live records;
+  pending actions remain deduplicated and retention starts on completion.
 - Every refusal is the same `403 { ok: false, error: "refused" }` to the
   client. The specific reason goes to the server log only, so the endpoint
   is not an oracle for which check a forgery passed.

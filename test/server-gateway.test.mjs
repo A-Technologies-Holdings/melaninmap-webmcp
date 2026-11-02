@@ -172,3 +172,70 @@ test("the gateway refuses forgeries, replays and key conflicts identically", asy
   assert.ok(refusals.includes("replayed"));
   assert.ok(refusals.includes("idempotency_conflict"));
 });
+
+test("a shared gateway store isolates verified subjects and audiences", async () => {
+  const idempotency = createInMemoryIdempotencyStore();
+  let runs = 0;
+  for (const [subject, scope] of [["alice", audience], ["bob", audience], ["alice", "https://api.example.test/other"]]) {
+    const api = createConsentGateway({ secret, audience: scope, idempotency });
+    const base = { subject, toolName: "hold_tickets", args: { eventId: "e1" }, remoteKey: "network" };
+    const issued = await api.issueConsentProof(base);
+    const response = await api.performConsequentialAction(
+      { ...base, proof: issued.body.proof, idempotencyKey: "same-key" },
+      async () => { runs += 1; return { subject, scope }; },
+    );
+    assert.equal(response.body.replayed, false);
+    assert.deepEqual(response.body.value, { subject, scope });
+  }
+  assert.equal(runs, 3);
+});
+
+test("capacity never evicts retained results and recovers after expiry", async () => {
+  let now = 0;
+  const store = createInMemoryIdempotencyStore({ maxEntries: 1, ttlMs: 10, now: () => now });
+  let runs = 0;
+  const run = async () => ++runs;
+  await store.execute("a", "digest", run);
+  assert.equal((await store.execute("b", "digest", run)).status, "capacity_exceeded");
+  assert.equal((await store.execute("a", "digest", run)).status, "replayed");
+  assert.equal(runs, 1);
+  now = 10;
+  assert.equal((await store.execute("b", "digest", run)).status, "executed");
+  assert.equal(runs, 2);
+});
+
+test("pending actions remain deduplicated beyond ttl and under capacity pressure", async () => {
+  let now = 0;
+  const store = createInMemoryIdempotencyStore({ maxEntries: 1, ttlMs: 10, now: () => now });
+  let finish;
+  let runs = 0;
+  const first = store.execute("a", "digest", async () => { runs += 1; return new Promise(resolve => { finish = resolve; }); });
+  await Promise.resolve();
+  now = 100;
+  assert.equal((await store.execute("b", "digest", async () => ++runs)).status, "capacity_exceeded");
+  const duplicate = store.execute("a", "digest", async () => ++runs);
+  finish("done");
+  assert.equal((await first).value, "done");
+  assert.equal((await duplicate).value, "done");
+  assert.equal(runs, 1);
+  assert.equal((await store.execute("a", "digest", async () => ++runs)).status, "replayed");
+});
+
+test("gateway refuses capacity exhaustion without running the action", async () => {
+  const refusals = [];
+  const api = createConsentGateway({ secret, audience,
+    idempotency: createInMemoryIdempotencyStore({ maxEntries: 1 }),
+    onRefusal: reason => refusals.push(reason),
+  });
+  const base = { toolName: "hold_tickets", args: { eventId: "e1" }, remoteKey: "network" };
+  let runs = 0;
+  for (const key of ["a", "b", "a"]) {
+    const issued = await api.issueConsentProof(base);
+    const result = await api.performConsequentialAction(
+      { ...base, proof: issued.body.proof, idempotencyKey: key }, async () => ++runs,
+    );
+    assert.equal(result.status, key === "b" ? 403 : 200);
+  }
+  assert.equal(runs, 1);
+  assert.deepEqual(refusals, ["idempotency_capacity"]);
+});
