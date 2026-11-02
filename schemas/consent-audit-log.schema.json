@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://melaninmap.app/schemas/consent-audit-log.schema.json",
+  "title": "WebMCP consent decision audit log record (v1)",
+  "description": "One JSON object per consent decision, as produced by toAuditLogRecord. Deliberately carries no tool arguments, no audit token and no consent proof: a log pipeline must never become a replay source.",
+  "type": "object",
+  "required": ["v", "type", "toolName", "decision", "elapsedMs", "at"],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "const": 1 },
+    "type": { "const": "webmcp.consent.decision" },
+    "toolName": { "type": "string", "minLength": 1 },
+    "decision": {
+      "type": "string",
+      "enum": ["confirmed", "declined", "timeout", "closed", "busy", "cancelled", "unverified"]
+    },
+    "elapsedMs": { "type": "number", "minimum": 0 },
+    "at": { "type": "string", "format": "date-time" }
+  }
+}

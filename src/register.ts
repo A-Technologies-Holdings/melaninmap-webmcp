@@ -381,6 +381,46 @@ export function registerAgentTools(
  * made before awaiting the host, so concurrent mounts cannot publish twice.
  * Rejections are surfaced without retrying a possibly consequential host call.
  */
+export type RegisterWithFallbackResult = RegisterResult & {
+  /**
+   * True when the host was unsupported and `onUnsupported` ran. False in
+   * every other case, including when no fallback was supplied.
+   */
+  fallbackInvoked: boolean;
+};
+
+/**
+ * Register tools, and run a fallback when — and only when — no WebMCP host
+ * exists. This is the progressive-enhancement seam: on Chrome with WebMCP
+ * the agent path registers; everywhere else (Safari, Firefox, Chrome
+ * without the trial) the page runs its ordinary non-agent flow instead of
+ * silently offering nothing.
+ *
+ * The fallback runs only for `unsupported`. An `aborted`, `invalid_tool` or
+ * partial registration is a caller bug or a lifecycle event, not a missing
+ * platform, and invoking a fallback there could double-present the action.
+ * A fallback that throws or rejects never changes the result: the tools are
+ * still unregistered, and the page's own error handling owns the rest.
+ */
+export async function registerAgentToolsWithFallback(
+  tools: readonly ModelContextTool<unknown>[],
+  options?: RegisterAgentToolsOptions & {
+    onUnsupported?: (result: RegisterResult) => unknown;
+  },
+): Promise<RegisterWithFallbackResult> {
+  const result = await registerAgentToolsAsync(tools, options);
+  if (result.registered || result.reason !== "unsupported" || typeof options?.onUnsupported !== "function") {
+    return { ...result, fallbackInvoked: false };
+  }
+  try {
+    const returned = options.onUnsupported(result);
+    if (returned !== null && (typeof returned === "object" || typeof returned === "function")) {
+      await Promise.resolve(returned).catch(() => undefined);
+    }
+  } catch { /* A failing fallback must not turn "unsupported" into a throw. */ }
+  return { ...result, fallbackInvoked: true };
+}
+
 export async function registerAgentToolsAsync(
   tools: readonly ModelContextTool<unknown>[],
   options?: RegisterAgentToolsOptions,

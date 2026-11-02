@@ -31,13 +31,102 @@
  * The queueing, deadlines, cancellation and the binding of every answer to
  * the request on screen all come from `createConsentQueue`. This file only
  * draws what the queue says is displayed, and reports clicks back by id.
+ *
+ * ## Localizing
+ *
+ * Every user-visible string this surface owns — the eyebrow, the decline
+ * label, the expiry sentence and the duration wording — can be replaced via
+ * `createDomConsentSurface({ strings })`. The tool's own title, detail and
+ * confirm label already arrive per request from `describeConsent`, so they
+ * localize where the tool is defined. `domConsentSurface` is the default
+ * English instance; each created surface owns its own queue, so surfaces
+ * for different locales never share prompts.
  */
 
 import type { ConsentSurface, DisplayedConsentRequest } from "./index.js";
-import { createConsentQueue } from "./index.js";
+import { createConsentQueue, type ConsentQueue } from "./index.js";
 
-/** At most three prompts, open or waiting. A fourth resolves `busy`. */
-const queue = createConsentQueue({ capacity: 3 });
+/** The user-visible strings a DOM consent surface owns, for localization. */
+export type DomConsentSurfaceStrings = {
+  /** Kicker above the title, naming who is asking. Default "Agent request". */
+  eyebrow?: string;
+  /** Label on the safe control. Default "Not now". */
+  declineLabel?: string;
+  /**
+   * The expiry sentence, from the formatted duration and the confirm label.
+   * Default: `Expires in <duration>. Nothing happens unless you choose "<label>".`
+   */
+  expiryText?: (durationText: string, confirmLabel: string) => string;
+  /** Format a remaining duration for `expiryText`. Defaults to English. */
+  formatDuration?: (ms: number) => string;
+};
+
+export type DomConsentSurfaceOptions = {
+  /** Requests held at once, open or waiting. Defaults to 3. */
+  capacity?: number;
+  strings?: DomConsentSurfaceStrings;
+};
+
+type ResolvedStrings = {
+  eyebrow: string;
+  declineLabel: string;
+  expiryText: (durationText: string, confirmLabel: string) => string;
+  formatDuration: (ms: number) => string;
+};
+
+/**
+ * "5 seconds", "90 seconds", "2 minutes" — what a person reads, not a number
+ * of ms. It must never promise more time than remains: whole seconds round up
+ * by under a second (the text's own resolution), seconds are kept below two
+ * minutes, and minutes always round DOWN. A queued prompt shows its remaining
+ * time, so "2 minutes" for 90 seconds would overstate a real deadline.
+ */
+function formatDurationEn(ms: number): string {
+  const seconds = Math.max(1, Math.ceil(ms / 1000));
+  if (seconds < 120) return `${seconds} second${seconds === 1 ? "" : "s"}`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
+function resolveStrings(strings: DomConsentSurfaceStrings | undefined): ResolvedStrings {
+  const resolved: ResolvedStrings = {
+    eyebrow: "Agent request",
+    declineLabel: "Not now",
+    expiryText: (durationText, confirmLabel) =>
+      `Expires in ${durationText}. Nothing happens unless you choose \u201c${confirmLabel}\u201d.`,
+    formatDuration: formatDurationEn,
+  };
+  if (strings === undefined) return resolved;
+  if (strings === null || typeof strings !== "object") {
+    throw new TypeError("createDomConsentSurface: strings must be an object");
+  }
+  // Configuration mistakes fail where they are written, not on first prompt.
+  if (strings.eyebrow !== undefined) {
+    if (typeof strings.eyebrow !== "string" || strings.eyebrow.length === 0) {
+      throw new TypeError("createDomConsentSurface: strings.eyebrow must be a non-empty string");
+    }
+    resolved.eyebrow = strings.eyebrow;
+  }
+  if (strings.declineLabel !== undefined) {
+    if (typeof strings.declineLabel !== "string" || strings.declineLabel.length === 0) {
+      throw new TypeError("createDomConsentSurface: strings.declineLabel must be a non-empty string");
+    }
+    resolved.declineLabel = strings.declineLabel;
+  }
+  if (strings.expiryText !== undefined) {
+    if (typeof strings.expiryText !== "function") {
+      throw new TypeError("createDomConsentSurface: strings.expiryText must be a function");
+    }
+    resolved.expiryText = strings.expiryText;
+  }
+  if (strings.formatDuration !== undefined) {
+    if (typeof strings.formatDuration !== "function") {
+      throw new TypeError("createDomConsentSurface: strings.formatDuration must be a function");
+    }
+    resolved.formatDuration = strings.formatDuration;
+  }
+  return resolved;
+}
 
 function element<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -50,22 +139,12 @@ function element<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/**
- * "5 seconds", "90 seconds", "2 minutes" — what a person reads, not a number
- * of ms. It must never promise more time than remains: whole seconds round up
- * by under a second (the text's own resolution), seconds are kept below two
- * minutes, and minutes always round DOWN. A queued prompt shows its remaining
- * time, so "2 minutes" for 90 seconds would overstate a real deadline.
- */
-function formatDuration(ms: number): string {
-  const seconds = Math.max(1, Math.ceil(ms / 1000));
-  if (seconds < 120) return `${seconds} second${seconds === 1 ? "" : "s"}`;
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
-}
-
 /** Build the dialog for one displayed request. Answers name that request's id. */
-function render(request: DisplayedConsentRequest): { dialog: HTMLDialogElement; decline: HTMLButtonElement } {
+function render(
+  queue: ConsentQueue,
+  strings: ResolvedStrings,
+  request: DisplayedConsentRequest,
+): { dialog: HTMLDialogElement; decline: HTMLButtonElement } {
   const dialog = document.createElement("dialog");
 
   // Structure and class names only — the look lives in consent-surface.css,
@@ -80,7 +159,7 @@ function render(request: DisplayedConsentRequest): { dialog: HTMLDialogElement; 
   dialog.setAttribute("aria-describedby", `${id}-detail ${id}-expiry`);
 
   // Say who is asking. The page did not open this dialog; an agent did.
-  const eyebrow = element("p", "mm-consent__eyebrow", "Agent request");
+  const eyebrow = element("p", "mm-consent__eyebrow", strings.eyebrow);
 
   const title = element("h2", "mm-consent__title", request.title);
   title.setAttribute("id", `${id}-title`);
@@ -102,7 +181,7 @@ function render(request: DisplayedConsentRequest): { dialog: HTMLDialogElement; 
   const expiry = element(
     "p",
     "mm-consent__expiry",
-    `Expires in ${formatDuration(request.timeoutMs)}. Nothing happens unless you choose \u201c${request.confirmLabel}\u201d.`,
+    strings.expiryText(strings.formatDuration(request.timeoutMs), request.confirmLabel),
   );
   expiry.setAttribute("id", `${id}-expiry`);
 
@@ -111,7 +190,7 @@ function render(request: DisplayedConsentRequest): { dialog: HTMLDialogElement; 
   // The queue checks event.isTrusted itself; a script's click() is ignored.
   confirm.addEventListener("click", (event) => { queue.confirm(request.id, event); });
 
-  const decline = element("button", "mm-consent__button mm-consent__button--decline", "Not now");
+  const decline = element("button", "mm-consent__button mm-consent__button--decline", strings.declineLabel);
   decline.type = "button";
   decline.addEventListener("click", () => { queue.decline(request.id); });
 
@@ -145,41 +224,52 @@ function render(request: DisplayedConsentRequest): { dialog: HTMLDialogElement; 
   return { dialog, decline };
 }
 
-let mounted: { id: string; dialog: HTMLDialogElement } | null = null;
+/**
+ * Create a DOM consent surface with its own queue. Use this for localized
+ * strings or a non-default capacity; use `domConsentSurface` for the
+ * default English surface. Throws a `TypeError` for malformed strings —
+ * a configuration mistake that should fail where it is written.
+ */
+export function createDomConsentSurface(options?: DomConsentSurfaceOptions): ConsentSurface {
+  const strings = resolveStrings(options?.strings);
+  const queue = createConsentQueue({ capacity: options?.capacity ?? 3 });
+  let mounted: { id: string; dialog: HTMLDialogElement } | null = null;
 
-/** Make the DOM match the queue: at most one dialog, for the displayed request. */
-function sync(): void {
-  const request = queue.getSnapshot();
-  if (mounted !== null && mounted.id === request?.id) return;
-  if (mounted !== null) {
-    const { dialog } = mounted;
-    mounted = null;
-    try { dialog.close(); } catch { /* Removal is still final if the host dialog fails. */ }
-    finally { dialog.remove(); }
+  /** Make the DOM match the queue: at most one dialog, for the displayed request. */
+  function sync(): void {
+    const request = queue.getSnapshot();
+    if (mounted !== null && mounted.id === request?.id) return;
+    if (mounted !== null) {
+      const { dialog } = mounted;
+      mounted = null;
+      try { dialog.close(); } catch { /* Removal is still final if the host dialog fails. */ }
+      finally { dialog.remove(); }
+    }
+    if (request === null) return;
+    let decline: HTMLButtonElement;
+    try {
+      const built = render(queue, strings, request);
+      decline = built.decline;
+      mounted = { id: request.id, dialog: built.dialog };
+      document.body.appendChild(built.dialog);
+      built.dialog.showModal();
+    } catch {
+      // A dialog that cannot be built or opened (no <body> yet, a host that
+      // refuses showModal) cannot be answered, and leaving it "displayed" would
+      // hold every later request hostage until it timed out. Dismissing it
+      // re-enters sync(), which removes it and moves on, so nothing may run
+      // after this.
+      queue.dismiss(request.id);
+      return;
+    }
+    // Deliberately the safe control. See the note above; the deployed card in
+    // reference/HandoffConsentCard.tsx does the same thing for the same reason.
+    decline.focus();
   }
-  if (request === null) return;
-  let decline: HTMLButtonElement;
-  try {
-    const built = render(request);
-    decline = built.decline;
-    mounted = { id: request.id, dialog: built.dialog };
-    document.body.appendChild(built.dialog);
-    built.dialog.showModal();
-  } catch {
-    // A dialog that cannot be built or opened (no <body> yet, a host that
-    // refuses showModal) cannot be answered, and leaving it "displayed" would
-    // hold every later request hostage until it timed out. Dismissing it
-    // re-enters sync(), which removes it and moves on, so nothing may run
-    // after this.
-    queue.dismiss(request.id);
-    return;
-  }
-  // Deliberately the safe control. See the note above; the deployed card in
-  // reference/HandoffConsentCard.tsx does the same thing for the same reason.
-  decline.focus();
+
+  queue.subscribe(sync);
+  return queue.surface;
 }
 
-queue.subscribe(sync);
-
 /** Serializes prompts so concurrent tool calls queue instead of stacking. */
-export const domConsentSurface: ConsentSurface = queue.surface;
+export const domConsentSurface: ConsentSurface = createDomConsentSurface();

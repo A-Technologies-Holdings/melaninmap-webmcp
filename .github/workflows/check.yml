@@ -1,0 +1,87 @@
+# Public mirror of the Buildkite lanes in .buildkite/pipeline.yml.
+# Buildkite remains the required gate; this workflow makes the same checks
+# visible on every pull request and supplies the OIDC identity that npm
+# provenance requires (see RELEASING.md). Commands are the Buildkite script's
+# own modes so the two lanes cannot drift apart.
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Nightly full regression, mirroring the Buildkite scheduled lane.
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: bash scripts/buildkite-check.sh package
+
+  regression:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: bash scripts/buildkite-check.sh regression
+
+  browser:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: bash scripts/buildkite-check.sh browser
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-results
+          path: test-results/browser/
+          if-no-files-found: ignore
+
+  spec:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      # Exit 75 is a network failure (nothing was compared): report it, do
+      # not fail the lane for it. Drift (1) and parse failure (3) fail.
+      - run: |
+          set +e
+          bash scripts/buildkite-check.sh spec
+          status=$?
+          if [ "$status" -eq 75 ]; then
+            echo "::warning::spec drift check could not reach the network (exit 75); nothing was compared"
+            exit 0
+          fi
+          exit "$status"

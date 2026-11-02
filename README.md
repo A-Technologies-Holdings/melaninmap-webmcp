@@ -220,6 +220,33 @@ rejection is swallowed — so it cannot change the result, and an async logger
 cannot delay it. (A synchronous one still runs before the action; keep it
 cheap.)
 
+For the aggregate view — timeout, `busy`, decline and `unverified` rates,
+per-tool breakdowns, threshold alerts and versioned audit-log records — see
+[docs/observability.md](./docs/observability.md). `createDecisionMetrics`,
+`evaluateDecisionAlerts` and `toAuditLogRecord` are exported from the package
+root and never see arguments or tokens.
+
+### When there is no WebMCP host
+
+WebMCP is a browser proposal, so most visitors' browsers have no host at all.
+`registerAgentToolsWithFallback` runs your ordinary non-agent flow only in
+that case:
+
+```ts
+await registerAgentToolsWithFallback([search, handoff], {
+  onUnsupported: () => showDirectBookingPath(),
+});
+```
+
+An aborted or invalid registration never invokes the fallback — that is a
+caller bug, not a missing platform, and presenting the action twice would
+compound it. A localized DOM surface is available from
+`createDomConsentSurface({ strings })` on the `dom-consent-surface` entry;
+each created surface owns its queue. Production wiring — the reference
+server gateway, rate limits, idempotency, and what must be proven on a live
+origin before launch — is collected in
+[docs/production-readiness.md](./docs/production-readiness.md).
+
 ### Your own prompt UI: the consent queue
 
 The example surface is one way to draw a prompt. If your page has its own
