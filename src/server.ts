@@ -207,6 +207,196 @@ export type ConsentProofVerification =
   | { ok: true; claims: ConsentProofClaims }
   | { ok: false; reason: ConsentProofFailure };
 
+/**
+ * Reference storage and limiting primitives for the server half.
+ *
+ * `verifyConsentProof` deliberately leaves single use, rate limiting and
+ * idempotency to the host, because only the host knows its datastore. These
+ * are the smallest correct in-memory versions of each, for tests, local
+ * development and single-instance deployments. They are NOT a multi-instance
+ * store: two processes each hold their own memory, so a nonce spent on one
+ * is fresh on the other. Behind more than one instance, implement the same
+ * shapes over Redis, Postgres or your platform KV with atomic operations.
+ */
+
+/** The `consume` shape `verifyConsentProof` requires, plus maintenance. */
+export type NonceLedger = {
+  consume: (nonce: string, expiresAt: number) => Promise<boolean>;
+  /** Evict records whose retention deadline has passed. Returns the count. */
+  prune(now?: number): number;
+  /** Records currently held. For tests and metrics, not authorization. */
+  readonly size: number;
+};
+
+/**
+ * In-memory single-use nonce ledger. The check-and-record is one synchronous
+ * step, so two concurrent calls in this process cannot both spend a nonce.
+ * Records are kept until the `expiresAt` the verifier passes (past the last
+ * moment any verifier accepts the proof) and evicted lazily on the next call
+ * or by `prune`. `maxEntries` bounds memory under a flood of distinct
+ * nonces: when full, the soonest-expiring record is evicted — evicting a
+ * live record early can only weaken replay protection, so size it so a
+ * flood cannot fill it inside one proof lifetime.
+ */
+export function createInMemoryNonceLedger(options?: { maxEntries?: number }): NonceLedger {
+  const maxEntries = options?.maxEntries ?? 10_000;
+  if (!Number.isInteger(maxEntries) || maxEntries < 1) {
+    throw new RangeError("createInMemoryNonceLedger: maxEntries must be a positive integer");
+  }
+  const used = new Map<string, number>();
+  const evictExpired = (now: number): number => {
+    let removed = 0;
+    for (const [nonce, until] of used) {
+      if (until <= now) { used.delete(nonce); removed += 1; }
+    }
+    return removed;
+  };
+  return {
+    async consume(nonce, expiresAt) {
+      const now = Date.now();
+      evictExpired(now);
+      if (used.has(nonce)) return false;
+      if (used.size >= maxEntries) {
+        let oldest: string | undefined;
+        let soonest = Infinity;
+        for (const [key, until] of used) if (until < soonest) { soonest = until; oldest = key; }
+        if (oldest !== undefined) used.delete(oldest);
+      }
+      used.set(nonce, expiresAt);
+      return true;
+    },
+    prune: (now = Date.now()) => evictExpired(now),
+    get size() { return used.size; },
+  };
+}
+
+export type RateLimitResult = {
+  allowed: boolean;
+  /** Calls remaining in the current window after this one, when allowed. */
+  remaining: number;
+  /** Ms until the window resets. 0 when allowed. */
+  retryAfterMs: number;
+};
+
+export type RateLimiter = {
+  /**
+   * Count one call for `key`. An empty or non-string key is always denied:
+   * rate limiting on a key the caller controls or omits is no limit at all,
+   * so key on something server-observed (the network origin, a session the
+   * server minted), never on a client-supplied installation id alone.
+   */
+  check(key: string): RateLimitResult;
+};
+
+/**
+ * Fixed-window rate limiter, in memory. When the key table is full the
+ * least-recently-seen key is evicted; a flood of fresh keys can therefore
+ * reset a victim's window, which is why this belongs behind a network-level
+ * limit as the fairness control, not the only abuse control (SECURITY.md).
+ */
+export function createRateLimiter(options: {
+  limit: number;
+  windowMs: number;
+  maxKeys?: number;
+  now?: () => number;
+}): RateLimiter {
+  const { limit, windowMs } = options;
+  if (!Number.isInteger(limit) || limit < 1) throw new RangeError("createRateLimiter: limit must be a positive integer");
+  if (!Number.isInteger(windowMs) || windowMs < 1) throw new RangeError("createRateLimiter: windowMs must be a positive integer");
+  const maxKeys = options.maxKeys ?? 10_000;
+  if (!Number.isInteger(maxKeys) || maxKeys < 1) throw new RangeError("createRateLimiter: maxKeys must be a positive integer");
+  const nowFn = options.now ?? Date.now;
+  const windows = new Map<string, { start: number; count: number }>();
+  return {
+    check(key) {
+      if (typeof key !== "string" || key.length === 0) return { allowed: false, remaining: 0, retryAfterMs: windowMs };
+      const now = nowFn();
+      let entry = windows.get(key);
+      if (entry !== undefined && now - entry.start >= windowMs) { windows.delete(key); entry = undefined; }
+      if (entry === undefined) {
+        if (windows.size >= maxKeys) {
+          const first = windows.keys().next().value as string | undefined;
+          if (first !== undefined) windows.delete(first);
+        }
+        entry = { start: now, count: 0 };
+        windows.set(key, entry);
+      }
+      if (entry.count >= limit) return { allowed: false, remaining: 0, retryAfterMs: Math.max(0, entry.start + windowMs - now) };
+      entry.count += 1;
+      return { allowed: true, remaining: limit - entry.count, retryAfterMs: 0 };
+    },
+  };
+}
+
+export type IdempotentResult<Value> =
+  | { status: "executed"; value: Value }
+  | { status: "replayed"; value: Value }
+  /** Same key, different request fingerprint: a conflict, never a replay. */
+  | { status: "conflict" }
+  /** No live record is evicted to admit a new action. Retry later. */
+  | { status: "capacity_exceeded" };
+
+export type IdempotencyStore = {
+  /**
+   * Run `run` once per (key, fingerprint). A repeat with the same
+   * fingerprint returns the first result without re-running; the same key
+   * with a different fingerprint is a conflict. A rejected `run` is not
+   * cached, so a transient failure may be retried. Concurrent duplicates
+   * share the in-flight call. Entries expire one ttl after successful completion;
+   * pending actions never expire. Capacity exhaustion refuses new keys.
+   */
+  execute<Value>(
+    key: string,
+    fingerprint: string,
+    run: () => Promise<Value>,
+  ): Promise<IdempotentResult<Value>>;
+};
+
+/** In-memory `IdempotencyStore`. Same single-instance caveat as the ledger. */
+export function createInMemoryIdempotencyStore(options?: {
+  ttlMs?: number;
+  maxEntries?: number;
+  now?: () => number;
+}): IdempotencyStore {
+  const ttlMs = options?.ttlMs ?? 10 * 60_000;
+  if (!Number.isInteger(ttlMs) || ttlMs < 1) throw new RangeError("createInMemoryIdempotencyStore: ttlMs must be a positive integer");
+  const maxEntries = options?.maxEntries ?? 10_000;
+  if (!Number.isInteger(maxEntries) || maxEntries < 1) throw new RangeError("createInMemoryIdempotencyStore: maxEntries must be a positive integer");
+  const nowFn = options?.now ?? Date.now;
+  type Entry = { fingerprint: string; expiresAt: number; promise: Promise<unknown> };
+  const entries = new Map<string, Entry>();
+  const evictExpired = () => {
+    const now = nowFn();
+    for (const [key, entry] of entries) if (entry.expiresAt <= now) entries.delete(key);
+  };
+  return {
+    async execute(key, fingerprint, run) {
+      if (typeof key !== "string" || key.length === 0 || typeof fingerprint !== "string" || fingerprint.length === 0) {
+        throw new TypeError("idempotency: key and fingerprint must be non-empty strings");
+      }
+      evictExpired();
+      const existing = entries.get(key);
+      if (existing !== undefined) {
+        if (existing.fingerprint !== fingerprint) return { status: "conflict" };
+        return { status: "replayed", value: await existing.promise as never };
+      }
+      if (entries.size >= maxEntries) return { status: "capacity_exceeded" };
+      // Install the entry before invoking user code, including synchronous callbacks.
+      const promise = Promise.resolve().then(run);
+      const entry: Entry = { fingerprint, expiresAt: Infinity, promise };
+      entries.set(key, entry);
+      try {
+        const value = await promise;
+        entry.expiresAt = nowFn() + ttlMs;
+        return { status: "executed", value: value as never };
+      } catch (error) {
+        if (entries.get(key) === entry) entries.delete(key);
+        throw error;
+      }
+    },
+  };
+}
+
 function subtle(): SubtleCrypto {
   const value = globalThis.crypto?.subtle;
   if (value === undefined) throw new TypeError("WebCrypto (crypto.subtle) is unavailable");

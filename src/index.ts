@@ -33,11 +33,24 @@ export {
   type DisplayedConsentRequest,
 } from "./queue.js";
 export {
+  createDecisionMetrics,
+  evaluateDecisionAlerts,
+  toAuditLogRecord,
+  type DecisionAlert,
+  type DecisionAlertThresholds,
+  type DecisionKind,
+  type DecisionMetrics,
+  type DecisionMetricsSnapshot,
+  type ToolDecisionStats,
+} from "./observability.js";
+export {
   detectModelContext,
   registerAgentTools,
   registerAgentToolsAsync,
+  registerAgentToolsWithFallback,
   type RegisterAgentToolsOptions,
   type RegisterResult,
+  type RegisterWithFallbackResult,
 } from "./register.js";
 export type {
   DetectedModelContext,

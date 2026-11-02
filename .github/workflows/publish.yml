@@ -1,0 +1,47 @@
+# Manual npm publish with provenance. Manual dispatch only: merging or
+# tagging never publishes. Configure the "release" environment in GitHub
+# (required reviewers) and either an npm trusted publisher for this
+# workflow or an NPM_TOKEN secret in that environment before first use.
+# See RELEASING.md for the full preconditions; this workflow enforces the
+# machine-checkable ones (clean full gate + browser suite) and stops there.
+name: publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type the package version to confirm this is a deliberate release"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write # npm provenance via OIDC
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: "https://registry.npmjs.org"
+      - name: Confirm version matches package.json
+        run: |
+          version="$(node -p 'require("./package.json").version')"
+          if [ "$version" != "${{ inputs.confirm }}" ]; then
+            echo "package.json is $version, not ${{ inputs.confirm }}" >&2
+            exit 1
+          fi
+      - name: Full check gate
+        run: bash scripts/buildkite-check.sh regression
+      - name: Browser suite on the exact release commit
+        run: bash scripts/buildkite-check.sh browser
+      - name: Publish with provenance
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

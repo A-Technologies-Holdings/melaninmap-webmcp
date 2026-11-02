@@ -49,9 +49,15 @@ green `main`. CI checks do not publish packages; releases remain manual.
 
 `npm publish --provenance` attests the tarball against the CI that built it,
 but provenance only works from a supported OIDC provider (GitHub Actions or
-GitLab CI). Publishing is manual and Buildkite validation does not supply npm OIDC
-provenance. Do not claim provenance from ordinary CI success. Any publishing
-automation needs separate review; GitHub-hosted CI remains retired.
+GitLab CI). Buildkite validation does not supply npm OIDC provenance — do not
+claim provenance from Buildkite success. The reviewed automation is
+`.github/workflows/publish.yml`: manual dispatch only, behind the `release`
+environment, re-running the full gate and the browser suite on the exact
+release commit before `npm publish --provenance`. It needs either an npm
+trusted publisher configured for that workflow or an `NPM_TOKEN` secret in
+the `release` environment; until one exists, publish by hand exactly as
+above and claim no provenance. `.github/workflows/check.yml` mirrors the
+Buildkite lanes publicly; Buildkite remains the required gate.
 
 ## After publishing
 
