@@ -9,15 +9,15 @@
   "browser": {
     "currentRun": {
       "status": "passed",
-      "observedAt": "2026-10-08T12:57:13.242539Z",
-      "sourceCommit": "070ae8e86d7df3c47410b5ca882e7a84a6785108",
+      "observedAt": "2026-11-02T23:19:03.000Z",
+      "sourceCommit": "33257d7e80d2763f3712d96c2cdae37dfde12cb0",
       "engine": "Chromium",
-      "engineVersion": "153.0.8010.12",
-      "playwrightVersion": "1.64.0",
+      "engineVersion": "156.0.8078.4",
+      "playwrightVersion": "1.64.1",
       "command": "npm run test:browser",
       "surface": "document.modelContext with --enable-features=WebMCP",
       "receipt": {
-        "suite": "browser-tests: 25 passed, including native Chromium WebMCP host",
+        "suite": "browser-tests: 28 passed, including native Chromium WebMCP host",
         "result": "passed"
       }
     }
