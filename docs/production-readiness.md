@@ -123,3 +123,49 @@ provide a valid destination and deploy the intended release registrar,
 consent surface and server gateway, including proof verification, shared
 single-use nonce state, rate limiting and idempotency. Re-run both paths on
 the exact release source before recording either live status as passed.
+
+
+## Live deployment verification — 2026-11-03
+
+The Codex isolated in-app browser exposed `document.modelContext` on the live
+origin without enabling a local WebMCP flag. Its user agent reported
+`Chrome/156.0.0.0`. HTTPS headers still identify private application deploy
+`108898080ce6a0ead5bd3bdea01c3c2df7e1c02f` and include the WebMCP origin-trial
+token. All five registered tools were discovered through the native host.
+
+Using native `document.modelContext.getTools()` and `executeTool()`:
+
+- Search returned published event records and a recommendation ID.
+- A handoff for Nissan Free Wednesdays displayed the real consent surface.
+  A trusted browser Decline click returned `user_declined`. Network capture
+  showed no `/api/agent/handoff*` request during this decline invocation.
+- A separate handoff for the returned Eventbrite record
+  `eventbrite:1979758661450` (NASHVILLE, TN SCHOOL SAFETY TECH AND WIRELESS
+  SEMINAR) displayed the consent surface. A trusted Confirm click sent
+  `POST /api/agent/handoff-consent`. The endpoint returned HTTP 200 with
+  `{ "ok": false, "code": "destination_unavailable" }`. No successful
+  downstream handoff or ticketing navigation was established.
+
+The final browser receipt was read at `2026-11-03T13:56:51.611Z`. Temporary
+page-local diagnostic state was removed after capture. No gateway mocking,
+consent bypass, or production configuration change was used.
+
+**Result:** decline passed; successful consequential handoff failed at consent
+proof issuance. HTTP 200 is transport success, not action success. The public
+code intentionally combines missing/unexposed event or ticket URL, malformed
+or disallowed destination, and missing business binding; this run does not
+identify which internal reason occurred. The private application must supply
+a real approved pilot event/tour with a published ticket destination and the
+matching server-governed business/channel binding before the success path can
+be proved. Do not invent a binding merely to turn the check green.
+
+This is evidence for the named private deploy, not proof that npm release
+`v1.1.0` is deployed there. Package release compatibility remains unproven.
+
+Separately, the development dependency advisory was already fixed in focused
+[PR #39](https://github.com/A-Technologies-Holdings/melaninmap-webmcp/pull/39),
+merged at `0e646b012c89d2b51685a04138d1cd9abd664f15`, upgrading `happy-dom`
+from `20.14.6` to `21.0.4`. A clean install and npm audit at that commit
+reported zero vulnerabilities; `npm run check` passed 314 tests with zero
+skips, and `npm run test:browser` passed all 28 tests. The older v1.1.0
+release-source lockfile is historical and was not rewritten.

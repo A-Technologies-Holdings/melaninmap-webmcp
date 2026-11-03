@@ -32,11 +32,12 @@
   },
   "liveOriginTrial": {
     "status": "not-run",
-    "reason": "No live origin-trial endpoint was exercised."
+    "reason": "The 2026-11-03 live private deploy exposed all five tools and passed decline, but confirm returned destination_unavailable. Deployment of the exact npm release source is unverified; see docs/production-readiness.md."
   },
   "productionDeployment": {
-    "status": "not-run",
-    "reason": "No production deployment was exercised."
+    "status": "failed",
+    "command": "Isolated in-app browser: native document.modelContext.executeTool with trusted Decline and Confirm clicks on https://melaninmap.app/",
+    "reason": "2026-11-03, private deploy 108898080ce6a0ead5bd3bdea01c3c2df7e1c02f: decline returned user_declined without a handoff request; confirm POST /api/agent/handoff-consent returned HTTP 200 with destination_unavailable. Successful gateway execution and deployment of exact npm release source remain unverified."
   },
   "privateRegistrarParity": {
     "status": "passed",
