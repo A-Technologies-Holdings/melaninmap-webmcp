@@ -191,3 +191,32 @@ Looking up a real ticket URL does not create an approved event-to-business
 attribution relationship. The next production step is to approve and configure
 a real event/business binding, then repeat consent, create, redemption and
 navigation. No production environment or catalog record was changed.
+
+
+### Authorized pilot configuration and retest — 2026-11-03
+
+After explicit authorization, the production pilot map was configured and read
+back for `eventbrite:1984623247558` with target type `event` and channel
+`event_detail`. Attribution is bound to the event's named organizer, Anthony
+Oakes, rather than the unrelated Busboys and Poets K Street catalog record.
+The organizer's [official site](https://www.anthonyoakescomedian.com/) confirms
+that he produces Seven Black Minutes. A sourced organizer business draft was
+saved through the admin editor, without an ownership-verification badge. The
+city-level service-area marker is explicitly not a storefront or venue.
+
+The draft remains suppressed, and a `catalog.publish` request is pending the
+required second-admin review. No publication control was bypassed.
+
+At `2026-11-03T14:12:39.054Z`, a fresh native host search and trusted Confirm
+click advanced beyond the previous refusal:
+
+- `POST /api/agent/handoff-consent`: HTTP 200, `ok: true`, target type `event`,
+  and a consent proof present (proof value not retained in this document).
+- `POST /api/agent/handoff`: HTTP 200, `ok: false`,
+  `code: destination_unavailable`. The organizer is still suppressed.
+- Redemption and outbound navigation: not reached; successful consequential
+  handoff remains unproved. Re-run after reviewed catalog publication.
+
+The earlier absent-binding observation is historical; the current remaining
+prerequisite is publication of the correct organizer business through the
+existing two-person catalog approval workflow.
