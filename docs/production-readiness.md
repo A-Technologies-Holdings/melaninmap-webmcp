@@ -294,3 +294,53 @@ refusal passed; successful ticket-page verification remains blocked on an
 authoritative working destination for this exact event. The earlier successful
 application-ledger run is historical proof of the mechanism, not evidence
 that a usable ticket link is available now.
+
+
+### Working alternative event and full live handoff — 2026-11-03
+
+**Live application and external destination: PASS.** A different, real event
+was verified without changing Seven Black Minutes into another performance:
+[1st Wednesdays Open Mic | 450 K | Hosted by: Anthony Oakes](https://www.eventbrite.com/e/1st-wednesdays-open-mic-450-k-hosted-by-anthony-oakes-tickets-1054426160029),
+November 4, 2026 at 8 PM, 450 K Street NW, Washington, DC. The live
+Eventbrite listing identifies **Busboys and Poets** as the organizer, and its
+ticket selector offered the November 4 occurrence with available inventory at
+$7.56 including fees and tax. Anthony Oakes is the host, not the listed
+organizer for this event.
+
+The event (`eventbrite:1054426160029`) and manually sourced organizer business
+(`organizer:busboys-and-poets-1554292416`) were added through the audited admin
+editor and published through the existing service-request/founder-approval
+workflow. The founder explicitly authorized this configuration in chat; the
+normal distinct-account server checks remained active. Both approval requests
+completed. No ownership badge, commercial partnership, purchase, or conversion
+is claimed. The Google-derived place record was not relabeled or published.
+
+Production `COMMERCE_HANDOFF_PILOT_BINDINGS` was extended with this exact event,
+organizer business, `targetType: event`, and `channel: event_detail`; readback
+matched and the prior binding was preserved. Seven Black Minutes retains no
+ticket URL because its original destination remains unavailable.
+
+At approximately `2026-11-03T20:16:13Z`, isolated in-app Chromium
+(`Chrome/156.0.0.0`) exercised the native `document.modelContext` host on
+private application deploy `108898080ce6a0ead5bd3bdea01c3c2df7e1c02f`:
+
+- A real directory search returned this published event and a recommendation ID.
+- Trusted Decline returned `user_declined` with zero handoff network events.
+- A separate test invocation with trusted Confirm completed consent issuance,
+  creation and redemption; all three `/api/agent/handoff-*` requests returned
+  HTTP 200 (including `/api/agent/handoff`).
+- The host returned `ok: true`, `replayed: false`, `sequence: 2`,
+  `attributionIncluded: true`, and `navigated: true`.
+- Independent production ledger readback confirmed `recommended` →
+  `handoff_created` → `handoff_opened`, sequence 2, for the exact event and
+  Busboys organizer business through `event_detail`.
+- The actual attributed destination tab loaded the correct Eventbrite listing.
+  Its ticket selector again offered November 4 at 8 PM and available
+  “Open Mic Night!” inventory at $7.56. Browser proof was captured at
+  `2026-11-03T20:16:46Z`. No checkout or payment was performed.
+
+This completes operational verification of the named private deployment's
+consent and consequential handoff, including a functioning ticket destination.
+It does not establish that the private deployment imports the exact published
+`@melaninmap/webmcp-consent@1.1.0` artifact. That release-source identity remains
+unverified, so release-wide compatibility is not marked passed.

@@ -32,12 +32,11 @@
   },
   "liveOriginTrial": {
     "status": "not-run",
-    "reason": "2026-11-03 native live tools, decline and confirmed application handoff were exercised on private deploy 108898080ce6a0ead5bd3bdea01c3c2df7e1c02f, but deployment of the exact npm release source remains unverified; see docs/production-readiness.md."
+    "reason": "2026-11-03: native live tools, decline and confirmed full handoff to available November 4 open-mic tickets passed on private deploy 108898080ce6a0ead5bd3bdea01c3c2df7e1c02f. Deployment of the exact npm release source remains unverified; see docs/production-readiness.md."
   },
   "productionDeployment": {
-    "status": "failed",
-    "command": "Isolated in-app browser: native document.modelContext.executeTool with trusted Decline and Confirm clicks on https://melaninmap.app/",
-    "reason": "2026-11-03: historical application handoff reached handoff_opened, but no usable ticket page was verified. Venue Buy Ticket still opens missing Eventbrite event 1984623247558; organizer profile lists no upcoming event. Broken production ticketUrl removed with audit note. At 19:55:40Z, live Confirm safely refused at consent issuance with destination_unavailable and no create/redeem request. Working replacement ticket URL and exact npm-release deployment remain unverified."
+    "status": "not-run",
+    "reason": "2026-11-03 operational verification passed on private deploy 108898080ce6a0ead5bd3bdea01c3c2df7e1c02f: eventbrite:1054426160029 bound to organizer:busboys-and-poets-1554292416; decline made zero handoff requests; confirm completed consent, creation, redemption, audited handoff_opened and real Eventbrite ticket inventory for November 4 at 8 PM. Exact published npm-release deployment identity remains unverified, so the release-wide production gate is not marked passed."
   },
   "privateRegistrarParity": {
     "status": "passed",
