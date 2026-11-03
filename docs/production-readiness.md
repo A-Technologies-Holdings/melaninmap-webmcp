@@ -264,3 +264,33 @@ verified. Do not substitute a different event URL without source verification.
 These live observations prove the named private deployment's application
 handoff, not that it imports the exact published npm release. Release-wide
 compatibility remains unproven, and the manifest does not claim a full pass.
+
+
+### Ticket-source lookup and removal of dead destination — 2026-11-03
+
+A live browser check of the venue's [official Black Friday listing](https://www.busboysandpoets.com/events/th-evt-57799286/)
+confirmed November 27, 2026, 7 PM, at 14th & V. Its Buy Ticket button still
+opens Eventbrite's embedded checkout for the same stored event ID
+`1984623247558`; that checkout explicitly reports that the page/event was not
+found. This is stronger evidence than the stale search-engine listing.
+
+The organizer's [live Eventbrite profile](https://www.eventbrite.com/o/anthony-oakes-13087731278)
+showed “Nothing planned right now.” The official organizer website provided
+no replacement link for this Black Friday event. Links to the November 4 open
+mic and the October 30 Halloween show identify different events and were not
+substituted. No replacement ticket link was verified.
+
+The known-broken `ticketUrl` was removed through the audited admin event
+editor. Production readback confirmed `ticketUrl: null` (field absent), with
+the event identity, published state and original source URL retained. The
+audit note records the venue listing, missing embedded checkout and organizer
+lookup. No event cancellation is inferred, and no generic calendar is
+misrepresented as a functioning ticket destination.
+
+At `2026-11-03T19:55:40.327Z`, a fresh native host search and trusted Confirm
+click returned `destination_unavailable` from `/api/agent/handoff-consent`
+(HTTP 200). No create or redeem request followed. **Current result:** safe
+refusal passed; successful ticket-page verification remains blocked on an
+authoritative working destination for this exact event. The earlier successful
+application-ledger run is historical proof of the mechanism, not evidence
+that a usable ticket link is available now.

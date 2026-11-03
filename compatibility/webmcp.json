@@ -37,7 +37,7 @@
   "productionDeployment": {
     "status": "failed",
     "command": "Isolated in-app browser: native document.modelContext.executeTool with trusted Decline and Confirm clicks on https://melaninmap.app/",
-    "reason": "2026-11-03 at 14:29:35Z: named private deployment passed decline (no handoff request) and confirmed consent/create/open (HTTP 200, ok true, navigated true); production ledger reached handoff_opened sequence 2 for the approved organizer binding. Full release compatibility is not passed: Eventbrite returned an error page with and without attribution parameters, and exact npm-release deployment remains unverified."
+    "reason": "2026-11-03: historical application handoff reached handoff_opened, but no usable ticket page was verified. Venue Buy Ticket still opens missing Eventbrite event 1984623247558; organizer profile lists no upcoming event. Broken production ticketUrl removed with audit note. At 19:55:40Z, live Confirm safely refused at consent issuance with destination_unavailable and no create/redeem request. Working replacement ticket URL and exact npm-release deployment remain unverified."
   },
   "privateRegistrarParity": {
     "status": "passed",
