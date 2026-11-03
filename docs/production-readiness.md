@@ -220,3 +220,47 @@ click advanced beyond the previous refusal:
 The earlier absent-binding observation is historical; the current remaining
 prerequisite is publication of the correct organizer business through the
 existing two-person catalog approval workflow.
+
+
+### Published organizer and successful application handoff — 2026-11-03
+
+The founder explicitly authorized completion of the publication workflow. The
+initial founder-origin request was rejected as superseded, preserving its audit
+trail. The authenticated admin service account submitted the publication
+request; the distinct founder account recorded the user's explicit approval;
+the service account executed that exact approved request. Production readback
+confirms the request completed and the organizer record is published. The
+requester and approver identities remain distinct; no requester or approval row
+was rewritten and no publication guard was disabled.
+
+At `2026-11-03T14:29:35.975Z`, the isolated in-app browser exercised both paths
+against private application deploy
+`108898080ce6a0ead5bd3bdea01c3c2df7e1c02f`:
+
+- Decline returned `user_declined` with zero handoff network events.
+- Confirm sent the real consent, create and open requests to
+  `/api/agent/handoff-consent`, `/api/agent/handoff` and
+  `/api/agent/handoff-open`; all three returned HTTP 200.
+- The native host result was `ok: true`, `replayed: false`, `sequence: 2`,
+  `attributionIncluded: true`, and `navigated: true`.
+- The new tab navigated to the exact Eventbrite event URL with the documented
+  `mm_j` and `mm_href` parameters.
+- A read-only production ledger query independently confirmed transitions from
+  `recommended` to `handoff_created` to `handoff_opened`, sequence 2, attributed
+  to `organizer:anthony-oakes-13087731278` for
+  `eventbrite:1984623247558` through `event_detail`.
+
+**Application result: PASS** for visible consent, proof issuance, creation,
+redemption, audited attribution and outbound navigation. No payment or purchase
+was performed or claimed.
+
+**External ticket-page result: FAIL.** Eventbrite displayed “Something went
+wrong” and “We can't find what you looked for.” Navigating to the same stored
+URL with both Melanin Map parameters removed produced the same page. This
+observation does not establish whether Eventbrite removed the event or returned
+a temporary/provider-specific refusal. A usable ticket-buying page is not
+verified. Do not substitute a different event URL without source verification.
+
+These live observations prove the named private deployment's application
+handoff, not that it imports the exact published npm release. Release-wide
+compatibility remains unproven, and the manifest does not claim a full pass.
