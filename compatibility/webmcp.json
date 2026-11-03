@@ -32,11 +32,12 @@
   },
   "liveOriginTrial": {
     "status": "not-run",
-    "reason": "No live origin-trial endpoint was exercised."
+    "reason": "2026-11-03 native live tools, decline and confirmed application handoff were exercised on private deploy 108898080ce6a0ead5bd3bdea01c3c2df7e1c02f, but deployment of the exact npm release source remains unverified; see docs/production-readiness.md."
   },
   "productionDeployment": {
-    "status": "not-run",
-    "reason": "No production deployment was exercised."
+    "status": "failed",
+    "command": "Isolated in-app browser: native document.modelContext.executeTool with trusted Decline and Confirm clicks on https://melaninmap.app/",
+    "reason": "2026-11-03 at 14:29:35Z: named private deployment passed decline (no handoff request) and confirmed consent/create/open (HTTP 200, ok true, navigated true); production ledger reached handoff_opened sequence 2 for the approved organizer binding. Full release compatibility is not passed: Eventbrite returned an error page with and without attribution parameters, and exact npm-release deployment remains unverified."
   },
   "privateRegistrarParity": {
     "status": "passed",

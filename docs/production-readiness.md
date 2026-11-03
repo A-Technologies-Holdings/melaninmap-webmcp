@@ -123,3 +123,144 @@ provide a valid destination and deploy the intended release registrar,
 consent surface and server gateway, including proof verification, shared
 single-use nonce state, rate limiting and idempotency. Re-run both paths on
 the exact release source before recording either live status as passed.
+
+
+## Live deployment verification — 2026-11-03
+
+The Codex isolated in-app browser exposed `document.modelContext` on the live
+origin without enabling a local WebMCP flag. Its user agent reported
+`Chrome/156.0.0.0`. HTTPS headers still identify private application deploy
+`108898080ce6a0ead5bd3bdea01c3c2df7e1c02f` and include the WebMCP origin-trial
+token. All five registered tools were discovered through the native host.
+
+Using native `document.modelContext.getTools()` and `executeTool()`:
+
+- Search returned published event records and a recommendation ID.
+- A handoff for Nissan Free Wednesdays displayed the real consent surface.
+  A trusted browser Decline click returned `user_declined`. Network capture
+  showed no `/api/agent/handoff*` request during this decline invocation.
+- A separate handoff for the returned Eventbrite record
+  `eventbrite:1979758661450` (NASHVILLE, TN SCHOOL SAFETY TECH AND WIRELESS
+  SEMINAR) displayed the consent surface. A trusted Confirm click sent
+  `POST /api/agent/handoff-consent`. The endpoint returned HTTP 200 with
+  `{ "ok": false, "code": "destination_unavailable" }`. No successful
+  downstream handoff or ticketing navigation was established.
+
+The final browser receipt was read at `2026-11-03T13:56:51.611Z`. Temporary
+page-local diagnostic state was removed after capture. No gateway mocking,
+consent bypass, or production configuration change was used.
+
+**Result:** decline passed; successful consequential handoff failed at consent
+proof issuance. HTTP 200 is transport success, not action success. The public
+code intentionally combines missing/unexposed event or ticket URL, malformed
+or disallowed destination, and missing business binding; this run does not
+identify which internal reason occurred. The private application must supply
+a real approved pilot event/tour with a published ticket destination and the
+matching server-governed business/channel binding before the success path can
+be proved. Do not invent a binding merely to turn the check green.
+
+This is evidence for the named private deploy, not proof that npm release
+`v1.1.0` is deployed there. Package release compatibility remains unproven.
+
+Separately, the development dependency advisory was already fixed in focused
+[PR #39](https://github.com/A-Technologies-Holdings/melaninmap-webmcp/pull/39),
+merged at `0e646b012c89d2b51685a04138d1cd9abd664f15`, upgrading `happy-dom`
+from `20.14.6` to `21.0.4`. A clean install and npm audit at that commit
+reported zero vulnerabilities; `npm run check` passed 314 tests with zero
+skips, and `npm run test:browser` passed all 28 tests. The older v1.1.0
+release-source lockfile is historical and was not rewritten.
+
+
+### Candidate lookup and production binding check — 2026-11-03
+
+A fresh lookup selected [Seven Black Minutes: Black Friday](https://www.eventbrite.com/e/seven-black-minutes-black-friday-tickets-1984623247558),
+`eventbrite:1984623247558`, rather than requiring the operator to supply an ID.
+The live native WebMCP search returned this exact record. A read-only production
+catalog query confirmed that its stored `ticketUrl` is the matching Eventbrite
+HTTPS URL. A trusted Confirm click again posted to
+`/api/agent/handoff-consent`, which returned HTTP 200 and
+`{ "ok": false, "code": "destination_unavailable" }`; the result was captured
+at `2026-11-03T14:01:13.872Z`.
+
+A separate read-only production environment check found
+`COMMERCE_HANDOFF_PILOT_BINDINGS` absent. This establishes a concrete missing
+prerequisite: no event can resolve the required server-governed pilot binding
+while that map is unset. The public refusal still does not identify its exact
+internal branch, and allowed-host configuration was not validated in this run.
+Looking up a real ticket URL does not create an approved event-to-business
+attribution relationship. The next production step is to approve and configure
+a real event/business binding, then repeat consent, create, redemption and
+navigation. No production environment or catalog record was changed.
+
+
+### Authorized pilot configuration and retest — 2026-11-03
+
+After explicit authorization, the production pilot map was configured and read
+back for `eventbrite:1984623247558` with target type `event` and channel
+`event_detail`. Attribution is bound to the event's named organizer, Anthony
+Oakes, rather than the unrelated Busboys and Poets K Street catalog record.
+The organizer's [official site](https://www.anthonyoakescomedian.com/) confirms
+that he produces Seven Black Minutes. A sourced organizer business draft was
+saved through the admin editor, without an ownership-verification badge. The
+city-level service-area marker is explicitly not a storefront or venue.
+
+The draft remains suppressed, and a `catalog.publish` request is pending the
+required second-admin review. No publication control was bypassed.
+
+At `2026-11-03T14:12:39.054Z`, a fresh native host search and trusted Confirm
+click advanced beyond the previous refusal:
+
+- `POST /api/agent/handoff-consent`: HTTP 200, `ok: true`, target type `event`,
+  and a consent proof present (proof value not retained in this document).
+- `POST /api/agent/handoff`: HTTP 200, `ok: false`,
+  `code: destination_unavailable`. The organizer is still suppressed.
+- Redemption and outbound navigation: not reached; successful consequential
+  handoff remains unproved. Re-run after reviewed catalog publication.
+
+The earlier absent-binding observation is historical; the current remaining
+prerequisite is publication of the correct organizer business through the
+existing two-person catalog approval workflow.
+
+
+### Published organizer and successful application handoff — 2026-11-03
+
+The founder explicitly authorized completion of the publication workflow. The
+initial founder-origin request was rejected as superseded, preserving its audit
+trail. The authenticated admin service account submitted the publication
+request; the distinct founder account recorded the user's explicit approval;
+the service account executed that exact approved request. Production readback
+confirms the request completed and the organizer record is published. The
+requester and approver identities remain distinct; no requester or approval row
+was rewritten and no publication guard was disabled.
+
+At `2026-11-03T14:29:35.975Z`, the isolated in-app browser exercised both paths
+against private application deploy
+`108898080ce6a0ead5bd3bdea01c3c2df7e1c02f`:
+
+- Decline returned `user_declined` with zero handoff network events.
+- Confirm sent the real consent, create and open requests to
+  `/api/agent/handoff-consent`, `/api/agent/handoff` and
+  `/api/agent/handoff-open`; all three returned HTTP 200.
+- The native host result was `ok: true`, `replayed: false`, `sequence: 2`,
+  `attributionIncluded: true`, and `navigated: true`.
+- The new tab navigated to the exact Eventbrite event URL with the documented
+  `mm_j` and `mm_href` parameters.
+- A read-only production ledger query independently confirmed transitions from
+  `recommended` to `handoff_created` to `handoff_opened`, sequence 2, attributed
+  to `organizer:anthony-oakes-13087731278` for
+  `eventbrite:1984623247558` through `event_detail`.
+
+**Application result: PASS** for visible consent, proof issuance, creation,
+redemption, audited attribution and outbound navigation. No payment or purchase
+was performed or claimed.
+
+**External ticket-page result: FAIL.** Eventbrite displayed “Something went
+wrong” and “We can't find what you looked for.” Navigating to the same stored
+URL with both Melanin Map parameters removed produced the same page. This
+observation does not establish whether Eventbrite removed the event or returned
+a temporary/provider-specific refusal. A usable ticket-buying page is not
+verified. Do not substitute a different event URL without source verification.
+
+These live observations prove the named private deployment's application
+handoff, not that it imports the exact published npm release. Release-wide
+compatibility remains unproven, and the manifest does not claim a full pass.
