@@ -169,3 +169,25 @@ from `20.14.6` to `21.0.4`. A clean install and npm audit at that commit
 reported zero vulnerabilities; `npm run check` passed 314 tests with zero
 skips, and `npm run test:browser` passed all 28 tests. The older v1.1.0
 release-source lockfile is historical and was not rewritten.
+
+
+### Candidate lookup and production binding check — 2026-11-03
+
+A fresh lookup selected [Seven Black Minutes: Black Friday](https://www.eventbrite.com/e/seven-black-minutes-black-friday-tickets-1984623247558),
+`eventbrite:1984623247558`, rather than requiring the operator to supply an ID.
+The live native WebMCP search returned this exact record. A read-only production
+catalog query confirmed that its stored `ticketUrl` is the matching Eventbrite
+HTTPS URL. A trusted Confirm click again posted to
+`/api/agent/handoff-consent`, which returned HTTP 200 and
+`{ "ok": false, "code": "destination_unavailable" }`; the result was captured
+at `2026-11-03T14:01:13.872Z`.
+
+A separate read-only production environment check found
+`COMMERCE_HANDOFF_PILOT_BINDINGS` absent. This establishes a concrete missing
+prerequisite: no event can resolve the required server-governed pilot binding
+while that map is unset. The public refusal still does not identify its exact
+internal branch, and allowed-host configuration was not validated in this run.
+Looking up a real ticket URL does not create an approved event-to-business
+attribution relationship. The next production step is to approve and configure
+a real event/business binding, then repeat consent, create, redemption and
+navigation. No production environment or catalog record was changed.

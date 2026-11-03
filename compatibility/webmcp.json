@@ -37,7 +37,7 @@
   "productionDeployment": {
     "status": "failed",
     "command": "Isolated in-app browser: native document.modelContext.executeTool with trusted Decline and Confirm clicks on https://melaninmap.app/",
-    "reason": "2026-11-03, private deploy 108898080ce6a0ead5bd3bdea01c3c2df7e1c02f: decline returned user_declined without a handoff request; confirm POST /api/agent/handoff-consent returned HTTP 200 with destination_unavailable. Successful gateway execution and deployment of exact npm release source remain unverified."
+    "reason": "2026-11-03, private deploy 108898080ce6a0ead5bd3bdea01c3c2df7e1c02f: decline returned user_declined without a handoff request; confirm POST /api/agent/handoff-consent returned HTTP 200 with destination_unavailable. Successful gateway execution and deployment of exact npm release source remain unverified. A second researched event (eventbrite:1984623247558) also failed on 2026-11-03; read-only production checks found the required COMMERCE_HANDOFF_PILOT_BINDINGS map unset."
   },
   "privateRegistrarParity": {
     "status": "passed",
