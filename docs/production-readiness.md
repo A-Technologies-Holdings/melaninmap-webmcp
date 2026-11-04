@@ -4,6 +4,67 @@ What must be true before this package carries live consequential traffic.
 Items are checked only by evidence named beside them, never by inference
 from the offline gate.
 
+
+## Current deployment receipt — 2026-11-04 UTC
+
+**PASS: exact published artifact identity, live origin trial and consequential
+handoff.** This receipt supersedes the earlier unverified-artifact and unavailable
+ticket-page observations below; those dated observations remain historical.
+
+Private [migration PR #3164](https://github.com/A-Technologies-Holdings/rork-melanin-map-342/pull/3164)
+merged as `db4db2c1c0ea8a0b98b1811be12a16457adbafcc`. That exact clean main
+commit was deployed through the landing helper, Cloudflare Worker version
+`d7f3e4a0-6de3-473d-9f9b-eef97be9956c`. Production readback at
+`2026-11-04T04:50:36Z` matched its deployment SHA, package version `1.1.0`,
+and the registry's published integrity:
+
+```text
+sha512-J6Daikt+aBjL+0L2oszBoapu0EVMGH999tERp7w4vAvLUBcodKRHo+2/2WpzSOU5B9IpD+FRmaYzsJRaWVxZMQ==
+```
+
+Both consumers pin the registry artifact. All 82 published package files matched
+the installed consumers; the clean deployment installation was independently
+compared again with a fresh registry download and had zero mismatches. The
+served main and WebMCP registrar assets matched the exact deployment build
+byte-for-byte. The registrar executes the published SDK result serializer.
+The reviewed consent UI, server proof exchange and navigation remain private
+adapters; this does not claim those implementations were replaced by the SDK.
+The published package source remains release commit
+`c80c30e0bb47e6c3e0d5c30b18f23ecb3a8a6f1b`.
+
+The new deployment retained the live origin-trial header. Isolated in-app
+Chromium (`Chrome/156.0.0.0`) exposed all five native tools. A real host search
+returned [1st Wednesdays Open Mic](https://www.eventbrite.com/e/1st-wednesdays-open-mic-450-k-hosted-by-anthony-oakes-tickets-1054426160029),
+November 4 at 8 PM, Busboys and Poets, 450 K Street NW, Washington, DC. Its
+Eventbrite organizer is Busboys and Poets; Anthony Oakes is the host. The
+production pilot binds `eventbrite:1054426160029` to the sourced business
+`organizer:busboys-and-poets-1554292416`, channel `event_detail`. No ownership
+badge or partnership claim was added.
+
+- Trusted Decline returned `user_declined`; zero handoff network requests.
+- A separate test invocation with trusted Confirm completed real consent,
+  creation and redemption, all HTTP 200. The host returned `ok: true`,
+  `replayed: false`, `sequence: 2`, `attributionIncluded: true`, and
+  `navigated: true`.
+- Independent production ledger readback at `2026-11-04T04:51:27.006Z`
+  confirmed `recommended` → `handoff_created` → `handoff_opened` for the exact
+  event and business, sequence 2.
+- The actual attributed Eventbrite tab loaded the matching listing. Its
+  November 4, 8 PM selector offered “Open Mic Night!” tickets at $7.56 including
+  fees and tax. No checkout, payment or conversion was performed or claimed.
+
+The earlier Seven Black Minutes link was not substituted with this event. Its
+known-unavailable ticket URL remains removed; this is a separately sourced event.
+The successful receipt establishes this web deployment and published package
+input, not signed-device, store, customer-conversion or public-GA acceptance.
+
+Private migration validation included the full landing check/build, 96 focused
+WebMCP tests, 106 Passport Bench tests and three Worker tests. Kilo and hosted
+Semgrep passed on the PR head. Broader monorepo validation is **not** claimed
+green: local policy hit a Semgrep rules-download connection reset, and an Expo
+chat timeout reproduced on the unchanged base commit. Remaining broader stages
+were not completed. These limits are recorded in Linear SLA-1554.
+
 ## Server half
 
 The browser gate is half the system. The other half lives in
@@ -45,7 +106,7 @@ framework-agnostic reference:
   [observability.md](./observability.md) before launch, not after the
   first incident.
 
-## Release evidence still required
+## Release evidence requirements and dated history
 
 These cannot be produced from this repository alone, and no offline check
 substitutes for them:
@@ -67,7 +128,8 @@ substitutes for them:
    deployed bundle in the initial page load references `modelContext`,
    and a clean Chromium profile still reports
    `document.modelContext === undefined`. The trial is provisioned; the
-   tools are not yet deployed behind it, so this stays `not-run`.
+   tools were not yet observed behind it, so that dated run stayed `not-run`.
+   The current successful receipt is recorded above.
 3. **Production deployment.** The same record must show
    `productionDeployment` exercised — the deployed page registering tools
    and completing a gated action through the real gateway, with the
