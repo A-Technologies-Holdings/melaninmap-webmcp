@@ -43,6 +43,17 @@ test("expired nonce records are evicted and cannot block memory forever", async 
   assert.equal(ledger.size, 0);
 });
 
+test("capacity refuses new nonces without evicting live replay records", async () => {
+  const ledger = createInMemoryNonceLedger({ maxEntries: 1 });
+  const until = Date.now() + 60_000;
+  assert.equal(await ledger.consume("first", until), true);
+  assert.equal(await ledger.consume("second", until), false);
+  assert.equal(await ledger.consume("first", until), false);
+  assert.equal(ledger.size, 1);
+  assert.equal(ledger.prune(until), 1);
+  assert.equal(await ledger.consume("second", until + 60_000), true);
+});
+
 test("a proof replayed through the real verifier is refused as replayed", async () => {
   const ledger = createInMemoryNonceLedger();
   const proof = await signConsentProof({
