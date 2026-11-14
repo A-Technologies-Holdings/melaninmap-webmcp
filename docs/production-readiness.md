@@ -77,12 +77,16 @@ framework-agnostic reference:
   Behind a reverse proxy, read the client address from the platform-set
   forwarding header on the trusted hop, never from the request body.
 - `performConsequentialAction` verifies the proof single-use through the
-  nonce ledger, then runs the action under an idempotency key: a retry
-  replays the first result, and the same key with different arguments is a
-  conflict, never a second action. Cache keys include the verified subject
-  and audience, so shared stores cannot replay another caller's result.
-  Capacity exhaustion refuses new actions rather than evicting live records;
-  pending actions remain deduplicated and retention starts on completion.
+  nonce ledger, then runs the action under an idempotency key. A successful
+  retry replays the first result, and the same key with different arguments
+  is a conflict, never a second action. A rejected action may have committed,
+  so it remains an unknown outcome and the same key does not run it again.
+  Cache keys include the verified subject and audience, so shared stores
+  cannot replay another caller's result. The action callback receives this
+  scoped key and must enforce it atomically in the datastore transaction or
+  downstream API that performs the consequential write. Capacity exhaustion
+  refuses new actions rather than evicting live records; pending and unknown
+  actions remain deduplicated.
 - Every refusal is the same `403 { ok: false, error: "refused" }` to the
   client. The specific reason goes to the server log only, so the endpoint
   is not an oracle for which check a forgery passed.
@@ -90,7 +94,12 @@ framework-agnostic reference:
   `@melaninmap/webmcp-consent/server` are single-instance references. With
   more than one instance, back the same shapes with an atomic shared store
   (Redis, Postgres, platform KV). A nonce spent on one instance must be
-  spent on all of them.
+  spent on all of them. The production idempotency store must durably model
+  pending, succeeded, failed-before-effect and unknown outcomes; only a
+  transactionally established failure-before-effect or reconciled unknown
+  may release a key for another attempt. The in-memory reference retains an
+  unknown until process restart and cannot provide that reconciliation, so it
+  is not an exactly-once guarantee for external writes.
 - Keep money movement and personal-data disclosure off this path entirely
   (see SECURITY.md). A consent proof authorizes one bounded operation; it
   does not prove a human was present.

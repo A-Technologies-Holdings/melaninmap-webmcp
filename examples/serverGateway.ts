@@ -14,9 +14,10 @@
  *    trusted client-address header, never a body field) and only then signs,
  *    binding the proof to the exact tool and arguments the page confirmed.
  * 2. `performConsequentialAction` verifies the proof (single use, via the
- *    ledger), then runs the action under an idempotency key, so a retried
- *    request replays the first result instead of acting twice, and the same
- *    key with different arguments is a conflict, never a silent replay.
+ *    ledger), then runs the action under an idempotency key. Successful
+ *    retries replay the first result; rejected actions remain an unknown
+ *    outcome and are not run again. The same key with different arguments is
+ *    a conflict, never a silent replay.
  * 3. Every refusal is the same undifferentiated 403 to the client. The
  *    specific reason goes to your server log only, so the endpoint is not
  *    an oracle for which check a forgery got past.
@@ -50,6 +51,14 @@ export type GatewayRequest = {
 
 export type GatewayResponse = { status: number; body: Record<string, unknown> };
 
+export type ConsequentialActionContext = {
+  /**
+   * Gateway-scoped operation identity. Enforce this exact key atomically in
+   * the datastore transaction or downstream API that performs the action.
+   */
+  idempotencyKey: string;
+};
+
 const refused: GatewayResponse = { status: 403, body: { ok: false, error: "refused" } };
 
 export function createConsentGateway(options: {
@@ -65,7 +74,7 @@ export function createConsentGateway(options: {
   issueConsentProof(request: GatewayRequest): Promise<GatewayResponse>;
   performConsequentialAction(
     request: GatewayRequest,
-    action: (args: unknown) => Promise<unknown>,
+    action: (args: unknown, context: ConsequentialActionContext) => Promise<unknown>,
   ): Promise<GatewayResponse>;
 } {
   const ledger = options.ledger ?? createInMemoryNonceLedger();
@@ -110,15 +119,16 @@ export function createConsentGateway(options: {
       if (typeof request.idempotencyKey !== "string" || request.idempotencyKey.length === 0) {
         return refuse("missing_idempotency_key", request);
       }
+      const operationKey = JSON.stringify([
+        verification.claims.audience,
+        verification.claims.subject ?? null,
+        request.idempotencyKey,
+      ]);
       const result = await idempotency.execute(
-        JSON.stringify([
-          verification.claims.audience,
-          verification.claims.subject ?? null,
-          request.idempotencyKey,
-        ]),
+        operationKey,
         verification.claims.argsDigest,
         async () => {
-          const value = await action(request.args);
+          const value = await action(request.args, { idempotencyKey: operationKey });
           try {
             options.log?.({
               type: "webmcp.consent.action",

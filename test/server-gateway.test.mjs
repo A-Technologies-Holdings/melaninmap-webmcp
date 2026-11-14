@@ -97,7 +97,7 @@ test("idempotency runs once, replays the result, and conflicts on new args", asy
   assert.equal(runs, 1);
 });
 
-test("concurrent duplicates share one run; failures are not cached", async () => {
+test("concurrent duplicates share one run", async () => {
   const store = createInMemoryIdempotencyStore();
   let runs = 0;
   const slow = async () => { runs += 1; await new Promise((r) => setTimeout(r, 10)); return runs; };
@@ -107,9 +107,28 @@ test("concurrent duplicates share one run; failures are not cached", async () =>
   ]);
   assert.equal(runs, 1);
   assert.deepEqual([a.status, b.status].sort(), ["executed", "replayed"]);
-  await assert.rejects(store.execute("k2", "d", async () => { throw new Error("down"); }));
-  const retried = await store.execute("k2", "d", async () => "ok");
-  assert.equal(retried.status, "executed");
+});
+
+test("ambiguous failures survive ttl and capacity pressure", async () => {
+  let now = 0;
+  const store = createInMemoryIdempotencyStore({ maxEntries: 1, ttlMs: 10, now: () => now });
+  let failedRuns = 0;
+  await assert.rejects(store.execute("k2", "d", async () => {
+    failedRuns += 1;
+    throw new Error("response lost");
+  }), /response lost/);
+  await assert.rejects(store.execute("k2", "d", async () => {
+    failedRuns += 1;
+    return "duplicate";
+  }), /response lost/);
+  assert.equal(failedRuns, 1);
+  now = 100;
+  await assert.rejects(store.execute("k2", "d", async () => {
+    failedRuns += 1;
+    return "late duplicate";
+  }), /response lost/);
+  assert.equal((await store.execute("other", "d", async () => "new")).status, "capacity_exceeded");
+  assert.equal(failedRuns, 1);
 });
 
 // --- gateway composition ------------------------------------------------------
@@ -145,6 +164,28 @@ test("the gateway issues, verifies, acts once, and replays idempotently", async 
   assert.equal(replay.body.replayed, true);
   assert.equal(acts, 1);
   assert.deepEqual(refusals, []);
+});
+
+test("the gateway retains ambiguous failures and supplies its scoped operation key", async () => {
+  const { api } = gateway();
+  const base = { toolName: "hold_tickets", args: { eventId: "e1" }, remoteKey: "203.0.113.7" };
+  let issued = await api.issueConsentProof(base);
+  let acts = 0;
+  let downstreamKey;
+  const request = { ...base, proof: issued.body.proof, idempotencyKey: "req-unknown" };
+  await assert.rejects(api.performConsequentialAction(request, async (_args, context) => {
+    acts += 1;
+    downstreamKey = context.idempotencyKey;
+    throw new Error("response lost after commit");
+  }), /response lost after commit/);
+
+  issued = await api.issueConsentProof(base);
+  await assert.rejects(api.performConsequentialAction(
+    { ...request, proof: issued.body.proof },
+    async () => { acts += 1; return { holdId: "duplicate" }; },
+  ), /response lost after commit/);
+  assert.equal(acts, 1);
+  assert.equal(downstreamKey, JSON.stringify([audience, null, "req-unknown"]));
 });
 
 test("the gateway refuses forgeries, replays and key conflicts identically", async () => {
