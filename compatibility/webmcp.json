@@ -9,11 +9,11 @@
   "browser": {
     "currentRun": {
       "status": "passed",
-      "observedAt": "2026-11-02T23:19:03.000Z",
-      "sourceCommit": "33257d7e80d2763f3712d96c2cdae37dfde12cb0",
+      "observedAt": "2026-11-14T23:27:07.000Z",
+      "sourceCommit": "4f44416acc35f59f6647862c29aca5c348212fbe",
       "engine": "Chromium",
-      "engineVersion": "156.0.8078.4",
-      "playwrightVersion": "1.64.1",
+      "engineVersion": "158.0.8127.18",
+      "playwrightVersion": "1.65.0",
       "command": "npm run test:browser",
       "surface": "document.modelContext with --enable-features=WebMCP",
       "receipt": {
