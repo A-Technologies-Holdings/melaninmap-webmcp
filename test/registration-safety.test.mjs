@@ -256,3 +256,19 @@ test('onToolEvent listeners detach on abort and no-op on non-EventTarget hosts',
  host({ registerTool() {} });
  assert.equal((await registerAgentToolsAsync([tool('plain_host')], { onToolEvent() { throw Error('never called'); } })).registered, true);
 });
+
+test('a fully rejected pending registration removes its lifecycle listeners', async () => {
+ let attempts = 0;
+ const target = new EventTarget();
+ target.registerTool = () => { attempts += 1; return attempts === 1 ? Promise.reject(Error('no')) : Promise.resolve(); };
+ host(target);
+ const events = [];
+ const options = { onToolEvent: e => events.push(e) };
+ registerAgentTools([tool('retry_watch')], options);
+ await settle();
+ // First attempt fully rejected: its listeners must be gone before the retry.
+ assert.equal(registerAgentTools([tool('retry_watch')], options).reason, 'async_registration_pending');
+ await settle();
+ target.dispatchEvent(Object.assign(new Event('toolactivated'), { toolName: 'retry_watch' }));
+ assert.deepEqual(events, [{ type: 'toolactivated', toolName: 'retry_watch' }]);
+});

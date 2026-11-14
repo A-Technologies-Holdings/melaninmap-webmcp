@@ -88,6 +88,7 @@ function releaseOnRejection(
   landedSynchronously: number,
   state: HostState,
   reservation: Reservation,
+  onFullyReleased?: () => void,
 ): void {
   if (pending.length === 0) return;
   void Promise.allSettled(pending.map(entry => Promise.resolve(entry.result))).then(outcomes => {
@@ -102,6 +103,9 @@ function releaseOnRejection(
       reservation.released = true;
       state.scopes.delete(reservation.scope);
       if (state.bulkOwner === reservation.scope) delete state.bulkOwner;
+      // Nothing landed, so nothing can ever fire the watched events — drop
+      // the listeners or every retry stacks another pair.
+      onFullyReleased?.();
     }
   }).catch(() => undefined);
 }
@@ -481,7 +485,7 @@ export function registerAgentTools(
       const reservation: Reservation = allSuccessfulRegistrationsScoped
         ? releaseOnAbort(options?.signal, state, scope, landed)
         : { scope, names: landed, released: false };
-      releaseOnRejection(pending, registeredToolCount - pending.length, state, reservation);
+      releaseOnRejection(pending, registeredToolCount - pending.length, state, reservation, () => stopWatching?.());
       if (asyncRegistrationPending) return { registered: false, reason: "async_registration_pending" };
       return {
         registered: true,
@@ -509,6 +513,7 @@ export function registerAgentTools(
           0,
           state,
           { scope, names: [...names], released: false },
+          () => stopWatching?.(),
         );
       }
       if (asyncRegistrationPending) return { registered: false, reason: "async_registration_pending" };
