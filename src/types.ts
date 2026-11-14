@@ -26,6 +26,11 @@ export type ToolExecutionOptions = { signal?: AbortSignal };
 export type ModelContextTool<Result = ModelContextToolResult> = {
   name: string;
   description: string;
+  /**
+   * Optional human-readable title for user interfaces. The spec types it
+   * `USVString`; the host coerces, so pass a string.
+   */
+  title?: string;
   /** JSON Schema object describing the tool's arguments. */
   inputSchema: Record<string, unknown>;
   /** MCP-style behavior hints (e.g. readOnlyHint). */
@@ -35,6 +40,12 @@ export type ModelContextTool<Result = ModelContextToolResult> = {
 
 export type ModelContextRegisterOptions = {
   signal?: AbortSignal;
+  /**
+   * Origins (URLs or origin strings) that control which documents in the
+   * current tree the tool is exposed to. The host rejects entries that do not
+   * parse to a potentially trustworthy origin.
+   */
+  exposedTo?: readonly string[];
 };
 
 /** Incremental registration shape from the proposal. */

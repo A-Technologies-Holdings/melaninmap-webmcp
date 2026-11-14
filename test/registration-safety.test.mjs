@@ -191,3 +191,68 @@ test('invalid tools are reported even where WebMCP is unsupported', () => {
  assert.equal(registerAgentTools([tool('has space')]).reason, 'invalid_tool');
  assert.equal(registerAgentTools([tool('valid_but_no_host')]).reason, 'unsupported');
 });
+
+test('exposedTo is validated before the host is touched', async () => {
+ const { registerAgentToolsAsync } = await import('../dist/index.js');
+ let calls = 0; host({ registerTool() { calls += 1 } });
+ for (const bad of ['not a url', 'http://example.com', 'ftp://x.dev', '', 42]) {
+  assert.deepEqual(registerAgentTools([tool('opt_' + String(bad).replace(/\W/g,'_'))], { exposedTo: [bad] }), { registered: false, reason: 'invalid_options' });
+ }
+ assert.deepEqual(await registerAgentToolsAsync([tool('opt_async_bad')], { exposedTo: 'https://x.dev' }), { registered: false, reason: 'invalid_options' });
+ assert.equal(calls, 0);
+});
+
+test('exposedTo is forwarded to the host and never widened by a bare retry', async () => {
+ const { registerAgentToolsAsync } = await import('../dist/index.js');
+ const seen = [];
+ host({ registerTool(t, options) { seen.push(options); if (options) throw TypeError('options unsupported'); } });
+ // A host that rejects the options bag must NOT be retried bare: the bare
+ // call would drop exposedTo and expose the tool everywhere.
+ assert.equal(registerAgentTools([tool('exposed_once')], { exposedTo: ['https://app.example.com'] }).reason, 'unsupported');
+ assert.equal(seen.length, 1);
+ assert.deepEqual(seen[0].exposedTo, ['https://app.example.com']);
+ // Async path: same fail-closed behavior, no bare retry exists there.
+ host({ async registerTool(t, options) { seen.push(options); throw TypeError('nope'); } });
+ assert.equal((await registerAgentToolsAsync([tool('exposed_async')], { exposedTo: ['https://app.example.com'] })).reason, 'unsupported');
+ assert.equal(seen.length, 2);
+ // http on localhost is potentially trustworthy; https anywhere is too.
+ host({ registerTool(t, options) { seen.push(options); } });
+ assert.equal(registerAgentTools([tool('exposed_ok')], { exposedTo: ['https://a.dev', 'http://localhost:3000'] }).registered, true);
+ assert.deepEqual(seen[2].exposedTo, ['https://a.dev', 'http://localhost:3000']);
+});
+
+test('scope and onToolEvent never reach the host options bag', () => {
+ const seen = [];
+ host({ registerTool(t, options) { seen.push(options); } });
+ assert.equal(registerAgentTools([tool('clean_bag')], { scope: 's', onToolEvent() {}, exposedTo: ['https://a.dev'] }).registered, true);
+ assert.deepEqual(Object.keys(seen[0]).sort(), ['exposedTo']);
+});
+
+test('onToolEvent observes host lifecycle events and survives a throwing listener', async () => {
+ const { registerAgentToolsAsync } = await import('../dist/index.js');
+ const target = new EventTarget();
+ target.registerTool = () => undefined;
+ host(target);
+ const events = [];
+ assert.equal(registerAgentTools([tool('watched')], { onToolEvent: e => { events.push(e); if (e.type === 'toolactivated') throw Error('observer blew up'); } }).registered, true);
+ target.dispatchEvent(Object.assign(new Event('toolactivated'), { toolName: 'watched' }));
+ target.dispatchEvent(Object.assign(new Event('toolcancel'), { toolName: 'watched' }));
+ target.dispatchEvent(new Event('unrelated'));
+ assert.deepEqual(events, [{ type: 'toolactivated', toolName: 'watched' }, { type: 'toolcancel', toolName: 'watched' }]);
+});
+
+test('onToolEvent listeners detach on abort and no-op on non-EventTarget hosts', async () => {
+ const { registerAgentToolsAsync } = await import('../dist/index.js');
+ const target = new EventTarget();
+ target.registerTool = () => undefined;
+ host(target);
+ const controller = new AbortController();
+ const events = [];
+ registerAgentTools([tool('scoped_watch')], { signal: controller.signal, onToolEvent: e => events.push(e) });
+ controller.abort();
+ target.dispatchEvent(Object.assign(new Event('toolactivated'), { toolName: 'scoped_watch' }));
+ assert.equal(events.length, 0);
+ // A plain-object host without addEventListener still registers fine.
+ host({ registerTool() {} });
+ assert.equal((await registerAgentToolsAsync([tool('plain_host')], { onToolEvent() { throw Error('never called'); } })).registered, true);
+});

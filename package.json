@@ -14,6 +14,7 @@
     "examples/*.css",
     "reference",
     "compatibility",
+    "docs",
     "README.md",
     "SECURITY.md",
     "CONTRIBUTING.md",

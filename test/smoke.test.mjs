@@ -542,3 +542,38 @@ test("a bulk owner does not block incremental registration", () => {
 test("refusal envelopes are well formed", () => {
   assert.equal(consentRefusal("timeout").code, "consent_timeout");
 });
+
+// --- spec surface: optional tool title --------------------------------------
+test("a read tool forwards an optional title to the host", () => {
+  const titled = defineReadTool({
+    name: "titled_read",
+    description: "d",
+    title: "Search the directory",
+    inputSchema: schema,
+    parseArgs: parse,
+    execute: async () => null,
+  });
+  assert.equal(titled.title, "Search the directory");
+  const untitled = defineReadTool({
+    name: "untitled_read",
+    description: "d",
+    inputSchema: schema,
+    parseArgs: parse,
+    execute: async () => null,
+  });
+  assert.equal("title" in untitled, false);
+});
+
+test("a consequential tool forwards an optional title to the host", () => {
+  const titled = defineConsequentialTool({
+    name: "titled_action",
+    description: "d",
+    title: "Request a handoff",
+    inputSchema: schema,
+    parseArgs: parse,
+    consent: async () => ({ decision: "declined" }),
+    describeConsent: () => ({ title: "t", detail: "d", confirmLabel: "c" }),
+    execute: async () => null,
+  });
+  assert.equal(titled.title, "Request a handoff");
+});

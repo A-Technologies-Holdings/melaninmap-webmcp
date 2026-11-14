@@ -341,6 +341,14 @@ no-op, while a different set on the same page registers independently. Pass
 `{ scope }` to name a registration explicitly, and `{ signal }` to release the
 scope when an owning controller aborts.
 
+Two more options ride the same call. `{ exposedTo: ["https://app.example.com"] }`
+forwards the spec's origin allowlist to the host, restricting which documents
+in the tree the tools are exposed to; entries must be potentially trustworthy
+origins or the call fails as `invalid_options` before the host is touched.
+`{ onToolEvent }` observes the host's `toolactivated` / `toolcancel` events as
+`{ type, toolName }` — feature-detected, detached when `signal` aborts, and
+inert on hosts that never fire them.
+
 Both of those assume the incremental `registerTool` style. A host that offers
 only the bulk `provideContext` style *replaces* the page's tool set on every
 call, so scopes there cannot be independent: the first scope to register owns
