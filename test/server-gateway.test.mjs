@@ -144,10 +144,56 @@ test("the gateway issues, verifies, acts once, and replays idempotently", async 
   assert.equal(replay.status, 200);
   assert.equal(replay.body.replayed, true);
   assert.equal(acts, 1);
-  assert.deepEqual(refusals, []);
+  const spentFreshProof = await api.performConsequentialAction(
+    { ...request, proof: reissued.body.proof, idempotencyKey: "req-2" }, action,
+  );
+  assert.equal(spentFreshProof.status, 403);
+  assert.equal(acts, 1);
+  assert.deepEqual(refusals, ["replayed"]);
 });
 
-test("the gateway refuses forgeries, replays and key conflicts identically", async () => {
+test("an exact authenticated retry returns a dropped result without acting twice", async () => {
+  const ledger = createInMemoryNonceLedger();
+  const idempotency = createInMemoryIdempotencyStore();
+  const authenticatedRetries = createInMemoryIdempotencyStore();
+  const options = { secret, audience, ledger, idempotency, authenticatedRetries };
+  const firstInstance = createConsentGateway(options);
+  const retryInstance = createConsentGateway(options);
+  const base = { toolName: "hold_tickets", args: { eventId: "e1" }, remoteKey: "network" };
+  const issued = await firstInstance.issueConsentProof(base);
+  const request = { ...base, proof: issued.body.proof, idempotencyKey: "dropped-response" };
+  let acts = 0;
+  const action = async () => { acts += 1; return { holdId: "h1" }; };
+
+  // The action committed, but its first response never reached the caller.
+  const committed = await firstInstance.performConsequentialAction(request, action);
+  assert.equal(committed.status, 200);
+  assert.equal(committed.body.replayed, false);
+  const retried = await retryInstance.performConsequentialAction(request, action);
+  assert.equal(retried.status, 200);
+  assert.equal(retried.body.replayed, true);
+  assert.deepEqual(retried.body.value, { holdId: "h1" });
+  assert.equal(acts, 1);
+});
+
+test("a missing idempotency key does not consume an otherwise valid proof", async () => {
+  const { api, refusals } = gateway();
+  const base = { toolName: "hold_tickets", args: { eventId: "e1" }, remoteKey: "network" };
+  const issued = await api.issueConsentProof(base);
+  let acts = 0;
+  const missing = await api.performConsequentialAction(
+    { ...base, proof: issued.body.proof }, async () => ++acts,
+  );
+  assert.equal(missing.status, 403);
+  const accepted = await api.performConsequentialAction(
+    { ...base, proof: issued.body.proof, idempotencyKey: "present" }, async () => ++acts,
+  );
+  assert.equal(accepted.status, 200);
+  assert.equal(acts, 1);
+  assert.deepEqual(refusals, ["missing_idempotency_key"]);
+});
+
+test("the gateway refuses forgeries, cross-key proof replays and key conflicts identically", async () => {
   const { api, refusals } = gateway();
   const base = { toolName: "hold_tickets", args: { eventId: "e1" }, remoteKey: "203.0.113.7" };
   const action = async () => ({ holdId: "h1" });
@@ -160,7 +206,9 @@ test("the gateway refuses forgeries, replays and key conflicts identically", asy
   const issued = await api.issueConsentProof(base);
   const request = { ...base, proof: issued.body.proof, idempotencyKey: "r1" };
   await api.performConsequentialAction(request, action);
-  const proofReplay = await api.performConsequentialAction(request, action);
+  const proofReplay = await api.performConsequentialAction(
+    { ...request, idempotencyKey: "r2" }, action,
+  );
   assert.equal(proofReplay.status, 403);
   assert.deepEqual(proofReplay.body, forged.body);
 
