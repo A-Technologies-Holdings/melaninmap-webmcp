@@ -117,7 +117,8 @@ before.** That is worth having:
 - authorization binds to one exact operation — a proof minted for "hold 2
   tickets to event A" fails as `wrong_args` against "hold 200" or "event B",
   and as `replayed` the second time;
-- the consent endpoint becomes the one place to rate limit the work.
+- the consent endpoint becomes the one place to rate limit proof issuance,
+  while the action endpoint keeps its own independent limit.
 
 It does **not** prove a human was present. The consent endpoint cannot see the
 page. A script running in the same browser session can call it with exactly
@@ -128,10 +129,16 @@ consent field.
 
 What the helpers cannot do for you:
 
-- **The consent endpoint is the control.** It receives the tool name and the
-  exact arguments. Allowlist the tools it will sign for, cap the arguments,
-  check the session, rate limit it. An endpoint that signs whatever it is sent
-  is a bare consent field with extra steps.
+- **The consent endpoint is the control.** `createConsentGateway` therefore
+  requires an `authorize` policy and refuses issuance when it is absent,
+  denies, throws or returns a malformed decision. It signs only the policy's
+  normalized operation, reapplies the policy before action execution and
+  gives only those normalized arguments to the action. The included
+  `createHoldTicketsAuthorizationPolicy` shows the required shape: one
+  allowlisted tool, an exact argument schema, a hard quantity ceiling, an
+  authenticated subject and a live server-minted recommendation bound to the
+  target. Adapt that policy to your own server state; never return the request
+  fields as an authorized operation without independently validating them.
 - **Single use is your storage.** `consume(nonce, expiresAt)` is required and
   must insert-if-absent atomically. A read-then-write two requests can
   interleave accepts a proof twice. Keep the record at least until
@@ -139,6 +146,10 @@ What the helpers cannot do for you:
 - **Without a subject, a proof is a bearer token.** One leaked from user A can
   be spent by user B for the same operation, once. Pass the session or account
   id as `subject` on both sides when the action is per-user.
+- **Limit issuance and action independently.** The reference gateway's
+  `issueLimit` and `actionLimit` are keyed by the server-observed `remoteKey`.
+  Keep both limits: a proof-issuance ceiling does not bound retries or other
+  traffic reaching the action route.
 - **The secret stays on the server and does one job.** At least 32 random
   bytes, used for nothing but consent proofs (rotate by passing a short list
   to `verifyConsentProof`). A secret in a browser bundle lets anyone mint

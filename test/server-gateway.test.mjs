@@ -17,10 +17,45 @@ import {
   signConsentProof,
   verifyConsentProof,
 } from "../dist/server.js";
-import { createConsentGateway } from "../.test-build/examples/serverGateway.js";
+import {
+  createConsentGateway,
+  createHoldTicketsAuthorizationPolicy,
+} from "../.test-build/examples/serverGateway.js";
 
 const secret = "test-secret-that-is-at-least-32-bytes-long!";
 const audience = "https://api.example.test/handoff";
+const policyNow = 1_800_000_000_000;
+
+const recommendationId = (subject, eventId) => `rec-${subject}-${eventId}`;
+const recommendations = new Map();
+for (const subject of ["alice", "bob"]) {
+  for (const eventId of ["e1", "e2"]) {
+    const id = recommendationId(subject, eventId);
+    recommendations.set(id, {
+      recommendationId: id,
+      subject,
+      eventId,
+      maxQuantity: eventId === "e1" ? 4 : 2,
+      expiresAt: policyNow + 60_000,
+    });
+  }
+}
+recommendations.set("rec-expired", {
+  recommendationId: "rec-expired",
+  subject: "alice",
+  eventId: "e1",
+  maxQuantity: 4,
+  expiresAt: policyNow,
+});
+const authorizeHoldTickets = createHoldTicketsAuthorizationPolicy({
+  loadRecommendation: (id) => recommendations.get(id),
+  now: () => policyNow,
+});
+const ticketArgs = (subject = "alice", eventId = "e1", quantity = 2) => ({
+  recommendationId: recommendationId(subject, eventId),
+  eventId,
+  quantity,
+});
 
 // --- nonce ledger -----------------------------------------------------------
 
@@ -114,19 +149,105 @@ test("concurrent duplicates share one run; failures are not cached", async () =>
 
 // --- gateway composition ------------------------------------------------------
 
-function gateway() {
+function gateway(overrides = {}) {
   const refusals = [];
   return {
     refusals,
     api: createConsentGateway({
-      secret, audience, onRefusal: (reason) => refusals.push(reason),
+      secret,
+      audience,
+      authorize: authorizeHoldTickets,
+      ...overrides,
+      onRefusal: (reason) => refusals.push(reason),
     }),
   };
 }
 
+test("the gateway fails closed when no authorization policy is configured", async () => {
+  const api = createConsentGateway({ secret, audience });
+  const response = await api.issueConsentProof({
+    toolName: "hold_tickets",
+    args: ticketArgs(),
+    remoteKey: "203.0.113.7",
+    authenticatedSubject: "alice",
+  });
+  assert.equal(response.status, 403);
+  assert.deepEqual(response.body, { ok: false, error: "refused" });
+  assert.equal(response.body.proof, undefined);
+});
+
+test("the ticket policy rejects unlisted tools, unsafe arguments and unbound state", async () => {
+  const { api, refusals } = gateway();
+  const base = {
+    toolName: "hold_tickets",
+    args: ticketArgs(),
+    remoteKey: "203.0.113.7",
+    authenticatedSubject: "alice",
+  };
+  const attempts = [
+    { ...base, toolName: "cancel_tickets" },
+    { ...base, args: ticketArgs("alice", "e1", 9) },
+    { ...base, args: ticketArgs("alice", "e2", 3) },
+    { ...base, args: { ...ticketArgs(), eventId: "e2" } },
+    { ...base, authenticatedSubject: "bob" },
+    { ...base, args: { recommendationId: "unknown", eventId: "e1", quantity: 1 } },
+    { ...base, args: { recommendationId: "rec-expired", eventId: "e1", quantity: 1 } },
+    { ...base, args: { ...ticketArgs(), admin: true } },
+    { ...base, authenticatedSubject: "" },
+  ];
+  for (const attempt of attempts) {
+    const response = await api.issueConsentProof(attempt);
+    assert.equal(response.status, 403);
+    assert.equal(response.body.proof, undefined);
+  }
+  assert.equal(refusals.length, attempts.length);
+  assert.ok(refusals.includes("not_authorized"));
+  assert.ok(refusals.includes("unauthenticated"));
+});
+
+test("the gateway signs and executes only the policy-normalized operation", async () => {
+  const normalizedArgs = ticketArgs();
+  const { api } = gateway({
+    authorize: async () => ({
+      authorized: true,
+      operation: { toolName: "hold_tickets", args: normalizedArgs },
+    }),
+  });
+  const callerOperation = {
+    toolName: "caller_selected_operation",
+    args: { target: "everything" },
+    remoteKey: "203.0.113.7",
+    authenticatedSubject: "alice",
+  };
+  const issued = await api.issueConsentProof(callerOperation);
+  assert.equal(issued.status, 200);
+  const callerVerification = await verifyConsentProof({
+    secret,
+    proof: issued.body.proof,
+    toolName: callerOperation.toolName,
+    args: callerOperation.args,
+    audience,
+    subject: "alice",
+    consume: async () => true,
+  });
+  assert.equal(callerVerification.ok, false);
+  assert.equal(callerVerification.reason, "wrong_tool");
+
+  let actedWith;
+  const result = await api.performConsequentialAction(
+    { ...callerOperation, proof: issued.body.proof, idempotencyKey: "normalized-1" },
+    async (args) => { actedWith = args; return { holdId: "h1" }; },
+  );
+  assert.equal(result.status, 200);
+  assert.deepEqual(actedWith, normalizedArgs);
+});
+
 test("the gateway issues, verifies, acts once, and replays idempotently", async () => {
   const { api, refusals } = gateway();
-  const base = { toolName: "hold_tickets", args: { eventId: "e1" }, remoteKey: "203.0.113.7" };
+  const base = {
+    toolName: "hold_tickets", args: ticketArgs(), remoteKey: "203.0.113.7",
+    authenticatedSubject: "alice",
+  };
   const issued = await api.issueConsentProof(base);
   assert.equal(issued.status, 200);
   let acts = 0;
@@ -149,7 +270,10 @@ test("the gateway issues, verifies, acts once, and replays idempotently", async 
 
 test("the gateway refuses forgeries, replays and key conflicts identically", async () => {
   const { api, refusals } = gateway();
-  const base = { toolName: "hold_tickets", args: { eventId: "e1" }, remoteKey: "203.0.113.7" };
+  const base = {
+    toolName: "hold_tickets", args: ticketArgs(), remoteKey: "203.0.113.7",
+    authenticatedSubject: "alice",
+  };
   const action = async () => ({ holdId: "h1" });
   const forged = await api.performConsequentialAction(
     { ...base, proof: "v1.forged.nope", idempotencyKey: "r1" }, action,
@@ -164,9 +288,9 @@ test("the gateway refuses forgeries, replays and key conflicts identically", asy
   assert.equal(proofReplay.status, 403);
   assert.deepEqual(proofReplay.body, forged.body);
 
-  const other = await api.issueConsentProof({ ...base, args: { eventId: "e2" } });
+  const other = await api.issueConsentProof({ ...base, args: ticketArgs("alice", "e2") });
   const conflict = await api.performConsequentialAction(
-    { ...base, args: { eventId: "e2" }, proof: other.body.proof, idempotencyKey: "r1" }, action,
+    { ...base, args: ticketArgs("alice", "e2"), proof: other.body.proof, idempotencyKey: "r1" }, action,
   );
   assert.equal(conflict.status, 403);
   assert.ok(refusals.includes("replayed"));
@@ -177,8 +301,13 @@ test("a shared gateway store isolates verified subjects and audiences", async ()
   const idempotency = createInMemoryIdempotencyStore();
   let runs = 0;
   for (const [subject, scope] of [["alice", audience], ["bob", audience], ["alice", "https://api.example.test/other"]]) {
-    const api = createConsentGateway({ secret, audience: scope, idempotency });
-    const base = { subject, toolName: "hold_tickets", args: { eventId: "e1" }, remoteKey: "network" };
+    const api = createConsentGateway({
+      secret, audience: scope, idempotency, authorize: authorizeHoldTickets,
+    });
+    const base = {
+      authenticatedSubject: subject, toolName: "hold_tickets",
+      args: ticketArgs(subject), remoteKey: "network",
+    };
     const issued = await api.issueConsentProof(base);
     const response = await api.performConsequentialAction(
       { ...base, proof: issued.body.proof, idempotencyKey: "same-key" },
@@ -224,10 +353,14 @@ test("pending actions remain deduplicated beyond ttl and under capacity pressure
 test("gateway refuses capacity exhaustion without running the action", async () => {
   const refusals = [];
   const api = createConsentGateway({ secret, audience,
+    authorize: authorizeHoldTickets,
     idempotency: createInMemoryIdempotencyStore({ maxEntries: 1 }),
     onRefusal: reason => refusals.push(reason),
   });
-  const base = { toolName: "hold_tickets", args: { eventId: "e1" }, remoteKey: "network" };
+  const base = {
+    toolName: "hold_tickets", args: ticketArgs(), remoteKey: "network",
+    authenticatedSubject: "alice",
+  };
   let runs = 0;
   for (const key of ["a", "b", "a"]) {
     const issued = await api.issueConsentProof(base);
@@ -238,4 +371,24 @@ test("gateway refuses capacity exhaustion without running the action", async () 
   }
   assert.equal(runs, 1);
   assert.deepEqual(refusals, ["idempotency_capacity"]);
+});
+
+test("the action route has an independent per-network-key limit", async () => {
+  const { api, refusals } = gateway({ actionLimit: { limit: 1, windowMs: 60_000 } });
+  const base = {
+    toolName: "hold_tickets", args: ticketArgs(), remoteKey: "network",
+    authenticatedSubject: "alice",
+  };
+  const firstProof = await api.issueConsentProof(base);
+  const secondProof = await api.issueConsentProof(base);
+  let runs = 0;
+  const action = async () => ++runs;
+  assert.equal((await api.performConsequentialAction(
+    { ...base, proof: firstProof.body.proof, idempotencyKey: "action-1" }, action,
+  )).status, 200);
+  assert.equal((await api.performConsequentialAction(
+    { ...base, proof: secondProof.body.proof, idempotencyKey: "action-2" }, action,
+  )).status, 403);
+  assert.equal(runs, 1);
+  assert.deepEqual(refusals, ["action_rate_limited"]);
 });
