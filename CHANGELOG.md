@@ -7,30 +7,70 @@ versioned path.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-15
+
+Spec alignment and security hardening across the client gate and the
+copyable server gateway.
+
 - `defineReadTool` and `defineConsequentialTool` accept an optional `title`,
   forwarded to the host's tool dictionary (the spec's human-readable label).
+- `defineConsequentialTool` now canonicalizes and deep-freezes the arguments
+  snapshot before the consent prompt on every consequential tool, not only
+  tools using `exchangeConsent`: the values the human reviews are exactly the
+  values the action executes, and the action can no longer observe mutated
+  input.
 - `registerAgentTools` / `registerAgentToolsAsync` accept `exposedTo`, an
   allowlist of trustworthy origins forwarded to the host's
   `registerTool(tool, { exposedTo })`. Invalid entries fail the call as
-  `invalid_options` before the host is touched, and a host that rejects the
-  options bag is never retried bare — a bare retry would silently widen the
-  tools' exposure. The bulk `provideContext` path has no options bag and is
-  unchanged.
+  `invalid_options` before the host is touched. The bulk `provideContext`
+  path has no options bag and is unchanged.
+- Synchronous `registerTool` calls that throw are now treated as
+  indeterminate: the attempted names stay reserved and the call reports
+  `registration_failed` (or `partial_registration`) instead of retrying bare,
+  which could double-publish a tool or silently drop the caller's abort
+  scope or `exposedTo` restriction.
 - `RegisterAgentToolsOptions.onToolEvent` observes the spec's
   `toolactivated` / `toolcancel` host events as `{ type, toolName }`. It is
   feature-detected (a no-op on hosts without the events), removes itself when
-  the registration signal aborts, and a throwing callback cannot break
-  registration or dispatch.
-- Packaging: `docs/` now ships in the npm tarball, and `.playwright-mcp/`
+  the registration signal aborts or a pending registration fully rejects,
+  and a throwing callback cannot break registration or dispatch.
+- Server (`@melaninmap/webmcp-consent/server`):
+  - `createInMemoryNonceLedger` refuses new nonces at capacity instead of
+    evicting the soonest-expiring live record, so a nonce flood cannot
+    re-enable replay of spent proofs.
+  - `createInMemoryIdempotencyStore` retains a rejected `run` as an "unknown"
+    outcome: the action may have committed before the response failed, so
+    duplicates observe the same failure rather than acting twice. Unknown
+    and pending entries never expire; only transactionally reconciled
+    outcomes may release a key. Added optional `release(key)` for outcomes
+    that must not occupy retained-result capacity.
+- Copyable gateway (`examples/serverGateway.ts`):
+  - `createConsentGateway` now requires an `authorize` policy. Proofs are
+    minted only for the policy's normalized operation, issuance and action
+    have independent rate limits, and `performConsequentialAction`
+    reapplies the policy before verifying. `createHoldTicketsAuthorizationPolicy`
+    demonstrates the required shape.
+  - `performConsequentialAction` coordinates exact transport retries through
+    an authenticated-retry store: the same proof, idempotency key, argument
+    digest, audience and subject replays a retained result without consuming
+    the nonce again, while any changed identity must spend a fresh proof.
+    Refused retry outcomes are released so they cannot exhaust store
+    capacity. The action callback receives a scoped `idempotencyKey` it must
+    enforce atomically downstream.
+- Reference content (`reference/`): directory-derived content reaching model
+  context is wrapped in explicit untrusted-content boundaries.
+- Release workflow: publish dispatch is pinned to protected `main` at an
+  exact commit SHA, and the release confirmation input is passed through an
+  environment variable instead of shell interpolation.
+- Packaging: `docs/` ships in the npm tarball, and `.playwright-mcp/`
   session artifacts are gitignored. The GitHub `check` workflow's dead
   PR-#40 self-hosted runner condition is removed; the package lane runs on
   `ubuntu-latest` like the others.
 
 ## [1.1.0] - 2026-10-14
 
-Authorized first-release date; not yet published. Publication is confirmed only
-by registry proof. The previously prepared 1.0.0 was never published; its changes
-are included below.
+Published to npm as `@melaninmap/webmcp-consent@1.1.0`. The previously
+prepared 1.0.0 was never published; its changes are included below.
 
 - Document the supported DOM surface import and copyable adapter. The full
   implementation remains available for customization, with isolated packed
