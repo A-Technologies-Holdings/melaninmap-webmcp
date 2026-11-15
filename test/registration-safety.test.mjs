@@ -37,13 +37,25 @@ test('the synchronous compatibility API observes promise rejection without claim
  assert.deepEqual(registerAgentTools([tool('legacy_promise')]),{registered:false,reason:'async_registration_pending'});
  await Promise.resolve();
 });
-test('bare compatibility registration observes rejection without claiming acceptance',async()=>{
- host({registerTool(_tool,options){if(options)throw TypeError('options unsupported');return Promise.reject(Error('not accepted'))}});
+test('scoped compatibility registration never retries without its signal',async()=>{
+ let calls=0;
+ host({registerTool(_tool,options){calls+=1;if(options)throw TypeError('options unsupported');return Promise.reject(Error('not accepted'))}});
  const controller=new AbortController();
- assert.deepEqual(registerAgentTools([tool('bare_promise')],{signal:controller.signal}),{registered:false,reason:'async_registration_pending'});
+ assert.deepEqual(registerAgentTools([tool('bare_promise')],{signal:controller.signal}),{registered:false,reason:'registration_failed'});
+ assert.equal(calls,1);
  controller.abort();
- assert.deepEqual(registerAgentTools([tool('bare_promise')]),{registered:false,reason:'already_registered'});
+ assert.deepEqual(registerAgentTools([tool('bare_promise')]),{registered:false,reason:'async_registration_pending'});
+ assert.equal(calls,2);
  await Promise.resolve();
+});
+test('an install-then-throw host cannot publish the same tool twice',()=>{
+ let calls=0; const installed=[]; const controller=new AbortController();
+ host({registerTool(t,options){calls+=1;installed.push({name:t.name,signal:options?.signal});throw Error('after install')}});
+ assert.deepEqual(registerAgentTools([tool('indeterminate')],{signal:controller.signal}),{registered:false,reason:'registration_failed'});
+ assert.deepEqual(registerAgentTools([tool('indeterminate')],{signal:controller.signal}),{registered:false,reason:'already_registered'});
+ assert.deepEqual(installed,[{name:'indeterminate',signal:controller.signal}]);
+ assert.equal(calls,1);
+ controller.abort();
 });
 test('bulk compatibility registration observes rejection without claiming acceptance',async()=>{
  host({provideContext(){return Promise.reject(Error('not accepted'))}});

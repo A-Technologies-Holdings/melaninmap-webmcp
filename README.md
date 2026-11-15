@@ -634,7 +634,10 @@ Every current WebMCP browser returns a promise from `registerTool()`, so the syn
 API answers `async_registration_pending` whether or not the browser accepted the
 tools; prefer the async API. When the browser rejects a registration, the sync
 API hands the reservation back once the rejection arrives, so a later retry is
-not refused as `already_registered`.
+not refused as `already_registered`. A synchronous throw is indeterminate and
+reports `registration_failed`: the attempted name stays reserved for the caller's
+signal lifetime, and the API never retries bare because that would discard the
+requested lifecycle. Calls that omit a signal still register bare for page lifetime.
 
 To try the local consent playground, run `npm run build && npm run build:test`,
 then `python3 -m http.server 8080` from a clone of this repository (the playground
