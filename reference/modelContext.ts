@@ -21,8 +21,11 @@ export type ModelContextTool = {
   description: string;
   /** JSON Schema object describing the tool's arguments. */
   inputSchema: Record<string, unknown>;
-  /** MCP-style behavior hints (e.g. readOnlyHint). */
-  annotations?: { readOnlyHint?: boolean } & Record<string, unknown>;
+  /** WebMCP behavior hints forwarded to the model host. */
+  annotations?: {
+    readOnlyHint?: boolean;
+    untrustedContentHint?: boolean;
+  } & Record<string, unknown>;
   execute: (
     args: Record<string, unknown>,
     options?: ModelContextToolExecuteOptions,
