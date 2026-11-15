@@ -71,26 +71,54 @@ The browser gate is half the system. The other half lives in
 [`examples/serverGateway.ts`](../examples/serverGateway.ts), a copyable,
 framework-agnostic reference:
 
-- Proofs are minted only by `issueConsentProof`, rate limited on the
-  server-observed network key (`remoteKey`). Never key a limiter solely on
-  a client-supplied installation id — the caller can rotate it for free.
-  Behind a reverse proxy, read the client address from the platform-set
-  forwarding header on the trusted hop, never from the request body.
-- `performConsequentialAction` verifies the proof single-use through the
-  nonce ledger, then runs the action under an idempotency key: a retry
-  replays the first result, and the same key with different arguments is a
-  conflict, never a second action. Cache keys include the verified subject
-  and audience, so shared stores cannot replay another caller's result.
-  Capacity exhaustion refuses new actions rather than evicting live records;
-  pending actions remain deduplicated and retention starts on completion.
+- Proofs are minted only by `issueConsentProof`, and only after the required
+  `authorize` callback returns a normalized operation. A missing, throwing,
+  denying or malformed policy fails closed. The gateway signs the policy
+  result, never the caller's tool and arguments directly.
+- Start from `createHoldTicketsAuthorizationPolicy`, then replace its names
+  and storage lookup for your application. It demonstrates a concrete tool
+  allowlist, exact argument schema, hard quantity ceiling, subject binding,
+  expiry and target binding to a server-minted recommendation. Populate
+  `authenticatedSubject` from the server session, never from the request
+  body.
+- Issuance and action have independent limits on the server-observed network
+  key (`remoteKey`). Never key either limiter solely on a client-supplied
+  installation id — the caller can rotate it for free. Behind a reverse
+  proxy, read the client address from the platform-set forwarding header on
+  the trusted hop, never from the request body.
+- `performConsequentialAction` reapplies the policy against current server
+  state, validates the idempotency key, authenticates the immutable request,
+  and coordinates exact transport retries before the single-use nonce
+  consume. Only the same proof fingerprint, key, digest, audience and
+  subject can replay its retained result; every changed identity must spend
+  a fresh proof. The action then runs under its logical idempotency key, so
+  the same key with different arguments is a conflict, never a second
+  action. A rejected action may have committed, so it remains an unknown
+  outcome and the same key does not run it again. The action callback
+  receives this scoped key and must enforce it atomically in the datastore
+  transaction or downstream API that performs the consequential write.
+  Cache keys include the verified subject and audience, so shared stores
+  cannot replay another caller's result. Capacity exhaustion refuses new
+  actions rather than evicting live records; pending and unknown actions
+  remain deduplicated, and refused retry outcomes are released rather than
+  retained.
 - Every refusal is the same `403 { ok: false, error: "refused" }` to the
   client. The specific reason goes to the server log only, so the endpoint
   is not an oracle for which check a forgery passed.
-- The in-memory ledger, limiter and idempotency store in
+- The in-memory ledger, limiter, idempotency and authenticated-retry stores in
   `@melaninmap/webmcp-consent/server` are single-instance references. With
   more than one instance, back the same shapes with an atomic shared store
   (Redis, Postgres, platform KV). A nonce spent on one instance must be
-  spent on all of them.
+  spent on all of them. Pass that shared retry store as
+  `authenticatedRetries`; a nonce spent on one instance and an exact retry
+  retained on another must be visible to all of them. Retain retry entries
+  through the proof acceptance window so an accepted proof cannot outlive its
+  recoverable result. The production idempotency store must durably model
+  pending, succeeded, failed-before-effect and unknown outcomes; only a
+  transactionally established failure-before-effect or reconciled unknown
+  may release a key for another attempt. The in-memory reference retains an
+  unknown until process restart and cannot provide that reconciliation, so it
+  is not an exactly-once guarantee for external writes.
 - Keep money movement and personal-data disclosure off this path entirely
   (see SECURITY.md). A consent proof authorizes one bounded operation; it
   does not prove a human was present.

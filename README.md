@@ -102,7 +102,11 @@ const search = defineReadTool({
 ```
 
 A consequential tool requires a `ConsentSurface` and a description of what the
-person is agreeing to. Both are mandatory arguments.
+person is agreeing to. Both are mandatory arguments. Its `parseArgs` must
+return plain JSON (or `{}` for no arguments): before prompting, the gate makes
+a detached, deep-frozen snapshot and passes that same value to
+`describeConsent` and `execute`. Unsnapshotable values are rejected as
+`invalid_arguments` before anybody is asked.
 
 Import the built DOM surface from the supported package export below. With a
 bundler that supports CSS imports, load its default stylesheet once per page:
@@ -426,14 +430,12 @@ execute(args, { proof })     ---------------------------------->   verifyConsent
                                                                     act only if ok
 ```
 
-On the page, give the consequential tool an `exchangeConsent` step. With one,
-the gate pins the arguments **before** it prompts: what `parseArgs` returned is
-canonicalized, and a deep-frozen JSON copy is what `describeConsent`, the
-exchange and `execute` all receive, so the proof binds exactly what the person
-was shown. Arguments that are not plain JSON are `invalid_arguments` and nobody
-is prompted (a tool with no arguments returns `{}` from `parseArgs`). A page
-without WebCrypto (plain `http:`) cannot verify anything and refuses as
-`consent_unverified` without prompting.
+On the page, give the consequential tool an `exchangeConsent` step. The gate
+already pins every consequential tool's arguments **before** it prompts. With
+an exchange, that canonical, deep-frozen JSON snapshot is also passed to the
+exchange, so the proof binds exactly what `describeConsent` showed and
+`execute` receives. A page without WebCrypto (plain `http:`) cannot verify
+anything and refuses as `consent_unverified` without prompting.
 
 After the person confirms, the exchange receives `{ toolName, args,
 argsDigest, auditToken?, signal }` and returns the proof string. If it throws,
@@ -640,7 +642,10 @@ Every current WebMCP browser returns a promise from `registerTool()`, so the syn
 API answers `async_registration_pending` whether or not the browser accepted the
 tools; prefer the async API. When the browser rejects a registration, the sync
 API hands the reservation back once the rejection arrives, so a later retry is
-not refused as `already_registered`.
+not refused as `already_registered`. A synchronous throw is indeterminate and
+reports `registration_failed`: the attempted name stays reserved for the caller's
+signal lifetime, and the API never retries bare because that would discard the
+requested lifecycle. Calls that omit a signal still register bare for page lifetime.
 
 To try the local consent playground, run `npm run build && npm run build:test`,
 then `python3 -m http.server 8080` from a clone of this repository (the playground

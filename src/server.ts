@@ -234,9 +234,9 @@ export type NonceLedger = {
  * Records are kept until the `expiresAt` the verifier passes (past the last
  * moment any verifier accepts the proof) and evicted lazily on the next call
  * or by `prune`. `maxEntries` bounds memory under a flood of distinct
- * nonces: when full, the soonest-expiring record is evicted — evicting a
- * live record early can only weaken replay protection, so size it so a
- * flood cannot fill it inside one proof lifetime.
+ * nonces: when full, new nonces are refused until a retained record expires.
+ * No live record is evicted early, because doing so would weaken replay
+ * protection for its still-valid proof.
  */
 export function createInMemoryNonceLedger(options?: { maxEntries?: number }): NonceLedger {
   const maxEntries = options?.maxEntries ?? 10_000;
@@ -256,12 +256,7 @@ export function createInMemoryNonceLedger(options?: { maxEntries?: number }): No
       const now = Date.now();
       evictExpired(now);
       if (used.has(nonce)) return false;
-      if (used.size >= maxEntries) {
-        let oldest: string | undefined;
-        let soonest = Infinity;
-        for (const [key, until] of used) if (until < soonest) { soonest = until; oldest = key; }
-        if (oldest !== undefined) used.delete(oldest);
-      }
+      if (used.size >= maxEntries) return false;
       used.set(nonce, expiresAt);
       return true;
     },
@@ -340,16 +335,24 @@ export type IdempotencyStore = {
   /**
    * Run `run` once per (key, fingerprint). A repeat with the same
    * fingerprint returns the first result without re-running; the same key
-   * with a different fingerprint is a conflict. A rejected `run` is not
-   * cached, so a transient failure may be retried. Concurrent duplicates
-   * share the in-flight call. Entries expire one ttl after successful completion;
-   * pending actions never expire. Capacity exhaustion refuses new keys.
+   * with a different fingerprint is a conflict. A rejected `run` has an
+   * ambiguous outcome: it may have committed before the response failed, so
+   * implementations must retain it and must not run the action again without
+   * explicit reconciliation. Concurrent duplicates share the in-flight call.
+   * Entries expire one ttl after successful completion; pending and unknown
+   * actions never expire. Capacity exhaustion refuses new keys.
    */
   execute<Value>(
     key: string,
     fingerprint: string,
     run: () => Promise<Value>,
   ): Promise<IdempotentResult<Value>>;
+  /**
+   * Drop a settled entry before its ttl. Optional: stores without it retain
+   * every completed result until expiry. Used to release outcomes that must
+   * never occupy retained-result capacity (for example a refused retry).
+   */
+  release?(key: string): void;
 };
 
 /** In-memory `IdempotencyStore`. Same single-instance caveat as the ledger. */
@@ -363,11 +366,18 @@ export function createInMemoryIdempotencyStore(options?: {
   const maxEntries = options?.maxEntries ?? 10_000;
   if (!Number.isInteger(maxEntries) || maxEntries < 1) throw new RangeError("createInMemoryIdempotencyStore: maxEntries must be a positive integer");
   const nowFn = options?.now ?? Date.now;
-  type Entry = { fingerprint: string; expiresAt: number; promise: Promise<unknown> };
+  type Entry = {
+    fingerprint: string;
+    state: "pending" | "succeeded" | "unknown";
+    expiresAt: number;
+    promise: Promise<unknown>;
+  };
   const entries = new Map<string, Entry>();
   const evictExpired = () => {
     const now = nowFn();
-    for (const [key, entry] of entries) if (entry.expiresAt <= now) entries.delete(key);
+    for (const [key, entry] of entries) {
+      if (entry.state === "succeeded" && entry.expiresAt <= now) entries.delete(key);
+    }
   };
   return {
     async execute(key, fingerprint, run) {
@@ -383,16 +393,23 @@ export function createInMemoryIdempotencyStore(options?: {
       if (entries.size >= maxEntries) return { status: "capacity_exceeded" };
       // Install the entry before invoking user code, including synchronous callbacks.
       const promise = Promise.resolve().then(run);
-      const entry: Entry = { fingerprint, expiresAt: Infinity, promise };
+      const entry: Entry = { fingerprint, state: "pending", expiresAt: Infinity, promise };
       entries.set(key, entry);
       try {
         const value = await promise;
+        entry.state = "succeeded";
         entry.expiresAt = nowFn() + ttlMs;
         return { status: "executed", value: value as never };
       } catch (error) {
-        if (entries.get(key) === entry) entries.delete(key);
+        // The callback may have committed before rejecting (for example, a
+        // downstream timeout after a write). Retain the rejected promise as an
+        // unknown outcome so every duplicate observes it instead of acting twice.
+        entry.state = "unknown";
         throw error;
       }
+    },
+    release(key) {
+      entries.delete(key);
     },
   };
 }

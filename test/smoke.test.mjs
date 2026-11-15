@@ -412,10 +412,10 @@ test("an already-aborted signal registers nothing", () => {
   });
 });
 
-// A host that rejects the options bag gets BARE registrations, which abort
-// cannot remove. Releasing the flags there would let a remount register the
-// same tool twice — duplicate executions and duplicate consent prompts.
-test("falls back to a bare call when the options bag is rejected", () => {
+// A synchronous throw is indeterminate: the host may reject before install or
+// install before throwing. Retrying would either discard this signal or publish
+// the same tool twice, so the compatibility API must call the host only once.
+test("does not retry bare when the options bag is rejected", () => {
   setModelContext("navigator", {
     registerTool(tool, options) {
       strictSeen.options.push(options);
@@ -428,29 +428,34 @@ test("falls back to a bare call when the options bag is rejected", () => {
   const fellBack = registerAgentTools([read], {
     signal: fallbackController.signal,
   });
-  assert.equal(fellBack.registered, true);
-  assert.equal(bareCalls, 1);
+  assert.deepEqual(fellBack, {
+    registered: false,
+    reason: "registration_failed",
+  });
+  assert.equal(bareCalls, 0);
 });
 
-test("a strict host sees { signal } then the bare retry — never `scope`", () => {
+test("a strict host sees one { signal } attempt — never `scope`", () => {
   assert.equal(strictSeen.options[0]?.signal, fallbackController.signal);
   assert.deepEqual(Object.keys(strictSeen.options[0]), ["signal"]);
-  assert.equal(strictSeen.options[1], undefined);
+  assert.equal(strictSeen.options.length, 1);
 });
 
-test("an unscoped fallback keeps the flags set on abort", () => {
+test("ending the failed scope permits an intentional page-lifetime call", () => {
   fallbackController.abort();
   assert.deepEqual(registerAgentTools([read]), {
-    registered: false,
-    reason: "already_registered",
+    registered: true,
+    toolCount: 1,
+    style: "incremental",
   });
+  assert.equal(bareCalls, 1);
 });
 
 // Idempotence is scoped, not global: a different tool set is a different
 // registration, even on the same page. The flag holds a map of scopes, so a
 // second consumer (a widget beside the host app, say) is not locked out by a
-// flag the first consumer set. This host rejects the options bag, so the
-// registration lands via the bare fallback.
+// flag the first consumer set. With no signal, registration is intentionally
+// page-lifetime and reaches the host as one bare call.
 test("a different tool set is a different scope and registers", () => {
   const secondConsumer = registerAgentTools([otherTool]);
   assert.equal(secondConsumer.registered, true);

@@ -8,9 +8,10 @@ green `main`. CI checks do not publish packages; releases remain manual.
 
 - You can publish to the `@melaninmap` npm scope (`npm whoami`), with 2FA
   ready for the publish OTP.
-- `main` is clean (`git status --porcelain`) and the exact release commit
-  passed `npm run check` in a recorded release session. A configured workflow
-  or an older browser receipt is not proof for the release commit.
+- `main` is protected by a GitHub branch rule or ruleset, is clean
+  (`git status --porcelain`), and the exact release commit passed
+  `npm run check` in a recorded release session. A configured workflow or an
+  older browser receipt is not proof for the release commit.
 - `CHANGELOG.md` has the authorized date for the version you are about to tag.
   A dated release candidate is still preparation until registry proof confirms
   publication.
@@ -55,9 +56,13 @@ claim provenance from Buildkite success. The reviewed automation is
 environment, re-running the full gate and the browser suite on the exact
 release commit before `npm publish --provenance`. It needs either an npm
 trusted publisher configured for that workflow or an `NPM_TOKEN` secret in
-the `release` environment; until one exists, publish by hand exactly as
-above and claim no provenance. `.github/workflows/check.yml` mirrors the
-Buildkite lanes publicly; Buildkite remains the required gate.
+the `release` environment. Dispatch it from `main` and enter the full
+40-character SHA of the reviewed `main` commit; the workflow rejects an
+unprotected `main`, any other ref, or any other SHA and checks out that
+immutable commit. Until a publisher or token exists, publish by hand exactly
+as above and claim no provenance.
+`.github/workflows/check.yml` mirrors the Buildkite lanes publicly; Buildkite
+remains the required gate.
 
 ## After publishing
 

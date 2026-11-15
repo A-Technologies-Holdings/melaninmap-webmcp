@@ -37,13 +37,25 @@ test('the synchronous compatibility API observes promise rejection without claim
  assert.deepEqual(registerAgentTools([tool('legacy_promise')]),{registered:false,reason:'async_registration_pending'});
  await Promise.resolve();
 });
-test('bare compatibility registration observes rejection without claiming acceptance',async()=>{
- host({registerTool(_tool,options){if(options)throw TypeError('options unsupported');return Promise.reject(Error('not accepted'))}});
+test('scoped compatibility registration never retries without its signal',async()=>{
+ let calls=0;
+ host({registerTool(_tool,options){calls+=1;if(options)throw TypeError('options unsupported');return Promise.reject(Error('not accepted'))}});
  const controller=new AbortController();
- assert.deepEqual(registerAgentTools([tool('bare_promise')],{signal:controller.signal}),{registered:false,reason:'async_registration_pending'});
+ assert.deepEqual(registerAgentTools([tool('bare_promise')],{signal:controller.signal}),{registered:false,reason:'registration_failed'});
+ assert.equal(calls,1);
  controller.abort();
- assert.deepEqual(registerAgentTools([tool('bare_promise')]),{registered:false,reason:'already_registered'});
+ assert.deepEqual(registerAgentTools([tool('bare_promise')]),{registered:false,reason:'async_registration_pending'});
+ assert.equal(calls,2);
  await Promise.resolve();
+});
+test('an install-then-throw host cannot publish the same tool twice',()=>{
+ let calls=0; const installed=[]; const controller=new AbortController();
+ host({registerTool(t,options){calls+=1;installed.push({name:t.name,signal:options?.signal});throw Error('after install')}});
+ assert.deepEqual(registerAgentTools([tool('indeterminate')],{signal:controller.signal}),{registered:false,reason:'registration_failed'});
+ assert.deepEqual(registerAgentTools([tool('indeterminate')],{signal:controller.signal}),{registered:false,reason:'already_registered'});
+ assert.deepEqual(installed,[{name:'indeterminate',signal:controller.signal}]);
+ assert.equal(calls,1);
+ controller.abort();
 });
 test('bulk compatibility registration observes rejection without claiming acceptance',async()=>{
  host({provideContext(){return Promise.reject(Error('not accepted'))}});
@@ -202,13 +214,14 @@ test('exposedTo is validated before the host is touched', async () => {
  assert.equal(calls, 0);
 });
 
-test('exposedTo is forwarded to the host and never widened by a bare retry', async () => {
+test('exposedTo is forwarded to the host and a throwing call is never retried', async () => {
  const { registerAgentToolsAsync } = await import('../dist/index.js');
  const seen = [];
  host({ registerTool(t, options) { seen.push(options); if (options) throw TypeError('options unsupported'); } });
- // A host that rejects the options bag must NOT be retried bare: the bare
- // call would drop exposedTo and expose the tool everywhere.
- assert.equal(registerAgentTools([tool('exposed_once')], { exposedTo: ['https://app.example.com'] }).reason, 'unsupported');
+ // A synchronous throw is indeterminate: the host may have registered the
+ // tool anyway, so there is no bare retry that could widen exposedTo or
+ // double-publish. The call is reported as registration_failed instead.
+ assert.equal(registerAgentTools([tool('exposed_once')], { exposedTo: ['https://app.example.com'] }).reason, 'registration_failed');
  assert.equal(seen.length, 1);
  assert.deepEqual(seen[0].exposedTo, ['https://app.example.com']);
  // Async path: same fail-closed behavior, no bare retry exists there.

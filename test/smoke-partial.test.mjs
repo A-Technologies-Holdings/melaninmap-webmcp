@@ -49,14 +49,13 @@ test("a partial registration reports the exact partial state", () => {
   });
 });
 
-// Three calls, not two: tool 1 lands, tool 2 throws on the optioned call, and
-// the compatibility fallback retries it bare before giving up. That is the
-// mid-loop failure this case exists to cover — one tool live, one not.
+// Two calls: tool 1 lands and tool 2 throws. The second call is indeterminate,
+// so it must be reserved without a retry that could publish it twice.
 test("the failure happened mid-loop, after one tool landed", () => {
   assert.equal(
     calls,
-    3,
-    "tool 1 landed, tool 2 failed on both the optioned and bare calls",
+    2,
+    "tool 1 landed and tool 2 was attempted exactly once",
   );
 });
 

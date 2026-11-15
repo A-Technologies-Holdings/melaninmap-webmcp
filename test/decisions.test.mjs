@@ -27,6 +27,85 @@ function tool(overrides) {
   });
 }
 
+test("ordinary consequential tools pin raw and nested arguments before prompting", async () => {
+  const input = { target: { id: "safe-target" }, quantity: 2 };
+  const shown = [];
+  const executed = [];
+  const result = json(await tool({
+    parseArgs: (raw) => raw,
+    describeConsent: (args) => {
+      shown.push({ target: args.target.id, quantity: args.quantity });
+      assert.equal(Object.isFrozen(args), true);
+      assert.equal(Object.isFrozen(args.target), true);
+      return prompt;
+    },
+    consent: async () => {
+      input.target.id = "swapped-target";
+      input.quantity = 200;
+      return { decision: "confirmed" };
+    },
+    execute: async (args) => {
+      executed.push({ target: args.target.id, quantity: args.quantity });
+      return { ok: true };
+    },
+  }).execute(input));
+  assert.deepEqual(result, { ok: true });
+  assert.deepEqual(shown, [{ target: "safe-target", quantity: 2 }]);
+  assert.deepEqual(executed, shown);
+});
+
+test("ordinary consequential tools read getter arguments only while pinning", async () => {
+  let reads = 0;
+  const parsed = {
+    get quantity() {
+      reads += 1;
+      return reads === 1 ? 2 : 200;
+    },
+  };
+  const seen = [];
+  await tool({
+    parseArgs: () => parsed,
+    describeConsent: (args) => { seen.push(args.quantity); return prompt; },
+    execute: async (args) => { seen.push(args.quantity); return { ok: true }; },
+  }).execute({});
+  assert.equal(reads, 1);
+  assert.deepEqual(seen, [2, 2]);
+});
+
+test("ordinary consequential tools detach Proxy arguments before prompting", async () => {
+  let reads = 0;
+  const parsed = new Proxy({ target: "safe-target" }, {
+    get(target, key, receiver) {
+      if (key === "target") {
+        reads += 1;
+        return reads === 1 ? "safe-target" : "swapped-target";
+      }
+      return Reflect.get(target, key, receiver);
+    },
+  });
+  const seen = [];
+  await tool({
+    parseArgs: () => parsed,
+    describeConsent: (args) => { seen.push(args.target); return prompt; },
+    execute: async (args) => { seen.push(args.target); return { ok: true }; },
+  }).execute({});
+  assert.equal(reads, 1);
+  assert.deepEqual(seen, ["safe-target", "safe-target"]);
+});
+
+test("ordinary consequential tools reject unsnapshotable arguments before prompting", async () => {
+  let prompts = 0;
+  let runs = 0;
+  const result = json(await tool({
+    parseArgs: () => ({ when: new Date(0) }),
+    consent: async () => { prompts += 1; return { decision: "confirmed" }; },
+    execute: async () => { runs += 1; return { ok: true }; },
+  }).execute({}));
+  assert.equal(result.code, "invalid_arguments");
+  assert.equal(prompts, 0);
+  assert.equal(runs, 0);
+});
+
 test("busy is its own refusal, distinct from closed, and permits one later retry", () => {
   const busy = consentRefusal("busy");
   const closed = consentRefusal("closed");

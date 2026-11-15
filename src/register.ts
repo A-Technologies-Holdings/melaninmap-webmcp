@@ -362,7 +362,9 @@ export type RegisterResult =
         /** A bulk-only host already holds a different scope's tool set. */
         | "bulk_conflict"
         | "tool_conflict"
-        | "async_registration_pending";
+        | "async_registration_pending"
+        /** A synchronous host call threw after invocation, so its effect is indeterminate. */
+        | "registration_failed";
     }
   | {
       registered: false;
@@ -418,27 +420,22 @@ export function registerAgentTools(
 
   let registeredToolCount = 0;
   let stopWatching: (() => void) | undefined;
-  let allSuccessfulRegistrationsScoped = true;
   let asyncRegistrationPending = false;
   const pending: { name: string; result: PromiseLike<unknown> }[] = [];
   try {
     if (host.registerTool) {
-      // Whether EVERY tool ended up scoped to the caller's signal. The
-      // compatibility fallback below registers bare, and a bare registration
-      // survives abort — see the release condition after the loop.
       // Registration is not atomic and WebMCP offers no rollback. If a later
       // tool fails outright, the earlier ones are already live in the host —
       // so the failure path must still mark, or a retry would register those
       // again: duplicate executions, duplicate consent prompts, or a hard
-      // failure on a host enforcing unique names. Better to report
-      // `unsupported` with some tools registered than to make a retry unsafe.
+      // failure on a host enforcing unique names. Better to report the partial
+      // state than to make a retry unsafe.
       //
       // The bag forwarded to the host carries ONLY the WebMCP options —
       // `{ signal }` and `{ exposedTo }`. Our own `scope` and `onToolEvent`
       // are bookkeeping for the flags below and must never reach the host:
       // an implementation that validates the options bag strictly would
-      // reject the unknown key, fall through to the bare retry, and silently
-      // drop the caller's abort-scoping or exposure restrictions.
+      // reject the unknown key and fail the registration.
       const hostOptions = hostRegisterOptions(options, exposedTo);
       stopWatching = watchToolEvents(host.identity, options);
       for (const tool of tools) {
@@ -451,19 +448,24 @@ export function registerAgentTools(
             // hands back whatever the host refuses.
             pending.push({ name: tool.name, result: result as PromiseLike<unknown> });
           }
-        } catch (error) {
-          // `exposedTo` narrows where tools are visible; a bare retry would
-          // register them everywhere the page is. That direction fails
-          // closed: no retry, the error propagates to the outer catch.
-          if (exposedTo !== null) throw error;
-          // Some implementations reject an unknown options bag. Retry bare
-          // rather than lose the whole registration over it.
-          const result = host.registerTool(tool);
-          if (result && typeof (result as PromiseLike<unknown>).then === "function") {
-            asyncRegistrationPending = true;
-            pending.push({ name: tool.name, result: result as PromiseLike<unknown> });
+        } catch {
+          // A synchronous throw does not prove the host had no observable
+          // effect. Retrying could publish the tool twice, while retrying bare
+          // would also discard a requested cancellation scope or narrow
+          // `exposedTo` restriction. Reserve every attempted name and report
+          // the indeterminate call without invoking the host again.
+          const attempted = names.slice(0, registeredToolCount + 1);
+          markRegistered(state, scope, attempted);
+          const reservation = releaseOnAbort(options?.signal, state, scope, attempted);
+          releaseOnRejection(pending, registeredToolCount - pending.length, state, reservation);
+          if (registeredToolCount > 0) {
+            return {
+              registered: false,
+              reason: "partial_registration",
+              toolCount: registeredToolCount,
+            };
           }
-          allSuccessfulRegistrationsScoped = false;
+          return { registered: false, reason: "registration_failed" };
         }
         registeredToolCount += 1;
       }
@@ -475,16 +477,8 @@ export function registerAgentTools(
       // dead for the rest of the page's life. So release them when the scope
       // ends.
       //
-      // ONLY when every registration was actually scoped, though. If any tool
-      // fell back to a bare call, abort cannot remove it, and releasing the
-      // flags would let a remount register the same tool a second time —
-      // duplicate executions and duplicate consent prompts, or an outright
-      // failure on a host that enforces unique names. Keeping the flags set is
-      // the safe side of that trade.
       const landed = names.slice(0, registeredToolCount);
-      const reservation: Reservation = allSuccessfulRegistrationsScoped
-        ? releaseOnAbort(options?.signal, state, scope, landed)
-        : { scope, names: landed, released: false };
+      const reservation = releaseOnAbort(options?.signal, state, scope, landed);
       releaseOnRejection(pending, registeredToolCount - pending.length, state, reservation, () => stopWatching?.());
       if (asyncRegistrationPending) return { registered: false, reason: "async_registration_pending" };
       return {
@@ -526,9 +520,7 @@ export function registerAgentTools(
       // duplicate consent prompts), so retain the idempotence flag and report
       // the partial state explicitly instead of pretending nothing happened.
       markRegistered(state, scope, names.slice(0, registeredToolCount));
-      if (allSuccessfulRegistrationsScoped) {
-        releaseOnAbort(options?.signal, state, scope, names.slice(0, registeredToolCount));
-      }
+      releaseOnAbort(options?.signal, state, scope, names.slice(0, registeredToolCount));
       return {
         registered: false,
         reason: "partial_registration",
