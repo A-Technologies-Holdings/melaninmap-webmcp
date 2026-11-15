@@ -11,6 +11,7 @@
 import type {
   DetectedModelContext,
   ModelContextProvideContext,
+  ModelContextRegisterOptions,
   ModelContextRegisterTool,
   ModelContextTool,
 } from "./types.js";
@@ -87,6 +88,7 @@ function releaseOnRejection(
   landedSynchronously: number,
   state: HostState,
   reservation: Reservation,
+  onFullyReleased?: () => void,
 ): void {
   if (pending.length === 0) return;
   void Promise.allSettled(pending.map(entry => Promise.resolve(entry.result))).then(outcomes => {
@@ -101,6 +103,9 @@ function releaseOnRejection(
       reservation.released = true;
       state.scopes.delete(reservation.scope);
       if (state.bulkOwner === reservation.scope) delete state.bulkOwner;
+      // Nothing landed, so nothing can ever fire the watched events — drop
+      // the listeners or every retry stacks another pair.
+      onFullyReleased?.();
     }
   }).catch(() => undefined);
 }
@@ -128,6 +133,126 @@ function firstInvalidTool(tools: readonly ModelContextTool<unknown>[]): string |
     if (typeof description !== "string" || description.trim() === "") return name;
   }
   return null;
+}
+
+/**
+ * The spec's trust rule for `exposedTo` entries: the URL must parse and its
+ * origin must be potentially trustworthy — HTTPS, or HTTP on localhost or
+ * loopback. Anything else is a SecurityError at the host; catching it here
+ * reports `invalid_options` instead of a misleading `unsupported`.
+ */
+function isPotentiallyTrustworthy(url: URL): boolean {
+  if (url.protocol === "https:") return true;
+  if (url.protocol !== "http:") return false;
+  const host = url.hostname;
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "::1" ||
+    host === "[::1]" ||
+    host.startsWith("127.")
+  );
+}
+
+/**
+ * Validate `exposedTo` once, up front. Returns the list to forward, or null
+ * when the option was not given. An invalid entry fails the whole call —
+ * forwarding a partially-valid list would expose tools more widely than the
+ * caller asked, which is the direction that must never fail open.
+ */
+function readExposedTo(value: readonly string[] | undefined): string[] | null | "invalid" {
+  if (value === undefined) return null;
+  if (!Array.isArray(value)) return "invalid";
+  const origins: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string" || entry.length === 0) return "invalid";
+    let url: URL;
+    try {
+      url = new URL(entry);
+    } catch {
+      return "invalid";
+    }
+    if (!isPotentiallyTrustworthy(url)) return "invalid";
+    origins.push(entry);
+  }
+  return origins;
+}
+
+/**
+ * The options bag forwarded to `registerTool`: ONLY WebMCP keys. Our own
+ * `scope` and `onToolEvent` are bookkeeping and must never reach the host —
+ * an implementation that validates the bag strictly would reject the unknown
+ * key, fall through to the bare retry, and silently drop abort-scoping or
+ * exposure restrictions.
+ */
+function hostRegisterOptions(
+  options: RegisterAgentToolsOptions | undefined,
+  exposedTo: string[] | null,
+): ModelContextRegisterOptions | undefined {
+  const hostOptions: ModelContextRegisterOptions = {};
+  if (options?.signal !== undefined) hostOptions.signal = options.signal;
+  if (exposedTo !== null) hostOptions.exposedTo = exposedTo;
+  return Object.keys(hostOptions).length === 0 ? undefined : hostOptions;
+}
+
+/**
+ * Subscribe to the host's `toolactivated` / `toolcancel` events when the
+ * detected host is an EventTarget. Feature-detected, never assumed: a host
+ * without the events simply never calls the listener. Returns a stop function;
+ * the listener also removes itself when `signal` aborts. A throwing callback
+ * or a hostile host object can neither break registration nor escape into
+ * the host's own dispatch.
+ */
+function watchToolEvents(
+  identity: object,
+  options: RegisterAgentToolsOptions | undefined,
+): () => void {
+  const listener = options?.onToolEvent;
+  if (typeof listener !== "function") return () => undefined;
+  const target = identity as {
+    addEventListener?: unknown;
+    removeEventListener?: unknown;
+  };
+  if (
+    typeof target.addEventListener !== "function" ||
+    typeof target.removeEventListener !== "function"
+  ) {
+    return () => undefined;
+  }
+  const add = target.addEventListener as (type: string, listener: (event: unknown) => void) => void;
+  const remove = target.removeEventListener as (type: string, listener: (event: unknown) => void) => void;
+  const handler = (event: unknown) => {
+    try {
+      if (event === null || typeof event !== "object") return;
+      const type = (event as { type?: unknown }).type;
+      if (type !== "toolactivated" && type !== "toolcancel") return;
+      const toolName = (event as { toolName?: unknown }).toolName;
+      listener({ type, toolName: typeof toolName === "string" ? toolName : "" });
+    } catch { /* An observer that fails has observed nothing. */ }
+  };
+  try {
+    add.call(target, "toolactivated", handler);
+    add.call(target, "toolcancel", handler);
+  } catch {
+    return () => undefined;
+  }
+  const stop = () => {
+    try {
+      remove.call(target, "toolactivated", handler);
+      remove.call(target, "toolcancel", handler);
+    } catch { /* A host that cannot remove is a host that never had them. */ }
+  };
+  const signal = options?.signal;
+  if (signal !== undefined) {
+    if (signal.aborted) {
+      stop();
+      return () => undefined;
+    }
+    try {
+      signal.addEventListener("abort", stop, { once: true });
+    } catch { /* The listener still works; it just outlives the scope. */ }
+  }
+  return stop;
 }
 
 /** Narrow one candidate host object, or null if it registers nothing. */
@@ -187,6 +312,15 @@ export function detectModelContext(): DetectedModelContext | null {
   return { registerTool: host.registerTool, provideContext: host.provideContext };
 }
 
+/**
+ * One `toolactivated` / `toolcancel` lifecycle event from the host, reduced
+ * to what a page needs: which tool, and which way its execution went.
+ */
+export type ToolLifecycleEvent = {
+  type: "toolactivated" | "toolcancel";
+  toolName: string;
+};
+
 export type RegisterAgentToolsOptions = {
   /**
    * Scope the registration to this signal's lifetime. Only the incremental
@@ -199,6 +333,23 @@ export type RegisterAgentToolsOptions = {
    * Pass an explicit scope to stabilize it across tool list changes.
    */
   scope?: string;
+  /**
+   * Origins the tools are exposed to, forwarded to the host's
+   * `registerTool(tool, { exposedTo })`. Each entry must parse as a URL whose
+   * origin is potentially trustworthy (HTTPS, or HTTP on localhost/loopback);
+   * anything else fails the whole call as `invalid_options` before the host
+   * is touched. Never forwarded on the bulk `provideContext` path, which has
+   * no options bag.
+   */
+  exposedTo?: readonly string[];
+  /**
+   * Observe the host's `toolactivated` / `toolcancel` events (spec; Chromium
+   * M156+). Called with `{ type, toolName }` for events on THIS registration's
+   * host. A no-op where the host is not an EventTarget or never fires them.
+   * The listener lives until `signal` aborts or the page unloads; a throwing
+   * callback cannot break registration or dispatch.
+   */
+  onToolEvent?: (event: ToolLifecycleEvent) => void;
 };
 
 export type RegisterResult =
@@ -229,6 +380,11 @@ export type RegisterResult =
       reason: "invalid_tool";
       toolName: string;
     }
+  | {
+      registered: false;
+      /** `exposedTo` was not a list of trustworthy origins. Nothing registered. */
+      reason: "invalid_options";
+    }
   | { registered: true; toolCount: number; style: "bulk" | "incremental" };
 
 /**
@@ -249,6 +405,8 @@ export function registerAgentTools(
   }
   const invalid = firstInvalidTool(tools);
   if (invalid !== null) return { registered: false, reason: "invalid_tool", toolName: invalid };
+  const exposedTo = readExposedTo(options?.exposedTo);
+  if (exposedTo === "invalid") return { registered: false, reason: "invalid_options" };
 
   const host = detectHost();
   if (!host) return { registered: false, reason: "unsupported" };
@@ -261,6 +419,7 @@ export function registerAgentTools(
   }
 
   let registeredToolCount = 0;
+  let stopWatching: (() => void) | undefined;
   let asyncRegistrationPending = false;
   const pending: { name: string; result: PromiseLike<unknown> }[] = [];
   try {
@@ -272,14 +431,13 @@ export function registerAgentTools(
       // failure on a host enforcing unique names. Better to report the partial
       // state than to make a retry unsafe.
       //
-      // The bag forwarded to the host carries ONLY the WebMCP `{ signal }`.
-      // Our own `scope` option is idempotence bookkeeping for the flags below
-      // and must never reach the host: an implementation that validates the
-      // options bag strictly must fail instead of silently dropping the
-      // caller's abort-scoping.
-      const hostOptions = options?.signal
-        ? { signal: options.signal }
-        : undefined;
+      // The bag forwarded to the host carries ONLY the WebMCP options —
+      // `{ signal }` and `{ exposedTo }`. Our own `scope` and `onToolEvent`
+      // are bookkeeping for the flags below and must never reach the host:
+      // an implementation that validates the options bag strictly would
+      // reject the unknown key and fail the registration.
+      const hostOptions = hostRegisterOptions(options, exposedTo);
+      stopWatching = watchToolEvents(host.identity, options);
       for (const tool of tools) {
         try {
           const result = host.registerTool(tool, hostOptions);
@@ -293,9 +451,9 @@ export function registerAgentTools(
         } catch {
           // A synchronous throw does not prove the host had no observable
           // effect. Retrying could publish the tool twice, while retrying bare
-          // would also discard a requested cancellation scope. Reserve every
-          // attempted name and report the indeterminate call without invoking
-          // the host again.
+          // would also discard a requested cancellation scope or narrow
+          // `exposedTo` restriction. Reserve every attempted name and report
+          // the indeterminate call without invoking the host again.
           const attempted = names.slice(0, registeredToolCount + 1);
           markRegistered(state, scope, attempted);
           const reservation = releaseOnAbort(options?.signal, state, scope, attempted);
@@ -321,7 +479,7 @@ export function registerAgentTools(
       //
       const landed = names.slice(0, registeredToolCount);
       const reservation = releaseOnAbort(options?.signal, state, scope, landed);
-      releaseOnRejection(pending, registeredToolCount - pending.length, state, reservation);
+      releaseOnRejection(pending, registeredToolCount - pending.length, state, reservation, () => stopWatching?.());
       if (asyncRegistrationPending) return { registered: false, reason: "async_registration_pending" };
       return {
         registered: true,
@@ -337,6 +495,7 @@ export function registerAgentTools(
       if (owner !== null && owner !== scope) {
         return { registered: false, reason: "bulk_conflict" };
       }
+      stopWatching = watchToolEvents(host.identity, options);
       const result = host.provideContext({ tools: [...tools] });
       markRegistered(state, scope, names);
       state.bulkOwner = scope;
@@ -348,6 +507,7 @@ export function registerAgentTools(
           0,
           state,
           { scope, names: [...names], released: false },
+          () => stopWatching?.(),
         );
       }
       if (asyncRegistrationPending) return { registered: false, reason: "async_registration_pending" };
@@ -367,6 +527,8 @@ export function registerAgentTools(
         toolCount: registeredToolCount,
       };
     }
+    // Nothing landed, so nothing can ever fire the watched events.
+    stopWatching?.();
     return { registered: false, reason: "unsupported" };
   }
 
@@ -425,6 +587,8 @@ export async function registerAgentToolsAsync(
   if (options?.signal?.aborted) return { registered: false, reason: "aborted" };
   const invalid = firstInvalidTool(tools);
   if (invalid !== null) return { registered: false, reason: "invalid_tool", toolName: invalid };
+  const exposedTo = readExposedTo(options?.exposedTo);
+  if (exposedTo === "invalid") return { registered: false, reason: "invalid_options" };
   const host = detectHost();
   if (!host) return { registered: false, reason: "unsupported" };
   const state = stateFor(host.identity);
@@ -437,6 +601,8 @@ export async function registerAgentToolsAsync(
   if (!host.registerTool && state.bulkOwner !== undefined) {
     return { registered: false, reason: "bulk_conflict" };
   }
+  const hostOptions = hostRegisterOptions(options, exposedTo);
+  const stopWatching = watchToolEvents(host.identity, options);
   markRegistered(state, scope, names);
   // Install the lifecycle listener before awaiting the first host promise.
   // This is deliberately one reservation for the complete invocation: an
@@ -453,7 +619,7 @@ export async function registerAgentToolsAsync(
     if (host.registerTool) {
       for (const tool of tools) {
         if (options?.signal?.aborted) break;
-        await host.registerTool(tool, options?.signal ? { signal: options.signal } : undefined);
+        await host.registerTool(tool, hostOptions);
         count += 1;
       }
       if (options?.signal?.aborted) return { registered: false, reason: "aborted" };
@@ -478,6 +644,8 @@ export async function registerAgentToolsAsync(
     }
     if (count === 0) {
       releaseReservation(reservation, state);
+      // Nothing landed, so nothing can ever fire the watched events.
+      stopWatching();
       return { registered: false, reason: "unsupported" };
     }
     return { registered: false, reason: "partial_registration", toolCount: count };

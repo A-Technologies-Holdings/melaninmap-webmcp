@@ -214,6 +214,11 @@ export type ToolSpec<Args> = {
    * they come from, and state any ordering dependency explicitly.
    */
   description: string;
+  /**
+   * Optional short human-readable title for host UIs (the spec's `title`).
+   * Defaults to unset; the host chooses its own fallback.
+   */
+  title?: string;
   inputSchema: Record<string, unknown>;
   annotations?: ModelContextTool["annotations"];
   /** Validate and narrow raw model-supplied arguments, or return null. */
@@ -272,6 +277,7 @@ export function defineReadTool<Args>(spec: ToolSpec<Args>): ModelContextTool<unk
   return {
     name: spec.name,
     description: spec.description,
+    ...(typeof spec.title === "string" ? { title: spec.title } : {}),
     inputSchema: spec.inputSchema,
     // readOnlyHint is derived, not caller-set: the spread order makes the
     // tool kind win over spec.annotations so a read tool can never be marked
@@ -625,6 +631,7 @@ export function defineConsequentialTool<Args>(
   return {
     name,
     description: spec.description,
+    ...(typeof spec.title === "string" ? { title: spec.title } : {}),
     inputSchema: spec.inputSchema,
     annotations: { ...spec.annotations, readOnlyHint: false, consequentialHint: true },
     execute: async (raw, hostOptions) => {

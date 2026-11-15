@@ -5,6 +5,27 @@ project follows the compatibility contract in [CONTRIBUTING.md](./CONTRIBUTING.m
 published tool names and schemas are stable surfaces and only change on a new
 versioned path.
 
+## [Unreleased]
+
+- `defineReadTool` and `defineConsequentialTool` accept an optional `title`,
+  forwarded to the host's tool dictionary (the spec's human-readable label).
+- `registerAgentTools` / `registerAgentToolsAsync` accept `exposedTo`, an
+  allowlist of trustworthy origins forwarded to the host's
+  `registerTool(tool, { exposedTo })`. Invalid entries fail the call as
+  `invalid_options` before the host is touched, and a host that rejects the
+  options bag is never retried bare — a bare retry would silently widen the
+  tools' exposure. The bulk `provideContext` path has no options bag and is
+  unchanged.
+- `RegisterAgentToolsOptions.onToolEvent` observes the spec's
+  `toolactivated` / `toolcancel` host events as `{ type, toolName }`. It is
+  feature-detected (a no-op on hosts without the events), removes itself when
+  the registration signal aborts, and a throwing callback cannot break
+  registration or dispatch.
+- Packaging: `docs/` now ships in the npm tarball, and `.playwright-mcp/`
+  session artifacts are gitignored. The GitHub `check` workflow's dead
+  PR-#40 self-hosted runner condition is removed; the package lane runs on
+  `ubuntu-latest` like the others.
+
 ## [1.1.0] - 2026-10-14
 
 Authorized first-release date; not yet published. Publication is confirmed only

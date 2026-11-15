@@ -51,6 +51,7 @@ export {
   type RegisterAgentToolsOptions,
   type RegisterResult,
   type RegisterWithFallbackResult,
+  type ToolLifecycleEvent,
 } from "./register.js";
 export type {
   DetectedModelContext,

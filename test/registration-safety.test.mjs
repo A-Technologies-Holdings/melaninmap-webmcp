@@ -203,3 +203,85 @@ test('invalid tools are reported even where WebMCP is unsupported', () => {
  assert.equal(registerAgentTools([tool('has space')]).reason, 'invalid_tool');
  assert.equal(registerAgentTools([tool('valid_but_no_host')]).reason, 'unsupported');
 });
+
+test('exposedTo is validated before the host is touched', async () => {
+ const { registerAgentToolsAsync } = await import('../dist/index.js');
+ let calls = 0; host({ registerTool() { calls += 1 } });
+ for (const bad of ['not a url', 'http://example.com', 'ftp://x.dev', '', 42]) {
+  assert.deepEqual(registerAgentTools([tool('opt_' + String(bad).replace(/\W/g,'_'))], { exposedTo: [bad] }), { registered: false, reason: 'invalid_options' });
+ }
+ assert.deepEqual(await registerAgentToolsAsync([tool('opt_async_bad')], { exposedTo: 'https://x.dev' }), { registered: false, reason: 'invalid_options' });
+ assert.equal(calls, 0);
+});
+
+test('exposedTo is forwarded to the host and a throwing call is never retried', async () => {
+ const { registerAgentToolsAsync } = await import('../dist/index.js');
+ const seen = [];
+ host({ registerTool(t, options) { seen.push(options); if (options) throw TypeError('options unsupported'); } });
+ // A synchronous throw is indeterminate: the host may have registered the
+ // tool anyway, so there is no bare retry that could widen exposedTo or
+ // double-publish. The call is reported as registration_failed instead.
+ assert.equal(registerAgentTools([tool('exposed_once')], { exposedTo: ['https://app.example.com'] }).reason, 'registration_failed');
+ assert.equal(seen.length, 1);
+ assert.deepEqual(seen[0].exposedTo, ['https://app.example.com']);
+ // Async path: same fail-closed behavior, no bare retry exists there.
+ host({ async registerTool(t, options) { seen.push(options); throw TypeError('nope'); } });
+ assert.equal((await registerAgentToolsAsync([tool('exposed_async')], { exposedTo: ['https://app.example.com'] })).reason, 'unsupported');
+ assert.equal(seen.length, 2);
+ // http on localhost is potentially trustworthy; https anywhere is too.
+ host({ registerTool(t, options) { seen.push(options); } });
+ assert.equal(registerAgentTools([tool('exposed_ok')], { exposedTo: ['https://a.dev', 'http://localhost:3000'] }).registered, true);
+ assert.deepEqual(seen[2].exposedTo, ['https://a.dev', 'http://localhost:3000']);
+});
+
+test('scope and onToolEvent never reach the host options bag', () => {
+ const seen = [];
+ host({ registerTool(t, options) { seen.push(options); } });
+ assert.equal(registerAgentTools([tool('clean_bag')], { scope: 's', onToolEvent() {}, exposedTo: ['https://a.dev'] }).registered, true);
+ assert.deepEqual(Object.keys(seen[0]).sort(), ['exposedTo']);
+});
+
+test('onToolEvent observes host lifecycle events and survives a throwing listener', async () => {
+ const { registerAgentToolsAsync } = await import('../dist/index.js');
+ const target = new EventTarget();
+ target.registerTool = () => undefined;
+ host(target);
+ const events = [];
+ assert.equal(registerAgentTools([tool('watched')], { onToolEvent: e => { events.push(e); if (e.type === 'toolactivated') throw Error('observer blew up'); } }).registered, true);
+ target.dispatchEvent(Object.assign(new Event('toolactivated'), { toolName: 'watched' }));
+ target.dispatchEvent(Object.assign(new Event('toolcancel'), { toolName: 'watched' }));
+ target.dispatchEvent(new Event('unrelated'));
+ assert.deepEqual(events, [{ type: 'toolactivated', toolName: 'watched' }, { type: 'toolcancel', toolName: 'watched' }]);
+});
+
+test('onToolEvent listeners detach on abort and no-op on non-EventTarget hosts', async () => {
+ const { registerAgentToolsAsync } = await import('../dist/index.js');
+ const target = new EventTarget();
+ target.registerTool = () => undefined;
+ host(target);
+ const controller = new AbortController();
+ const events = [];
+ registerAgentTools([tool('scoped_watch')], { signal: controller.signal, onToolEvent: e => events.push(e) });
+ controller.abort();
+ target.dispatchEvent(Object.assign(new Event('toolactivated'), { toolName: 'scoped_watch' }));
+ assert.equal(events.length, 0);
+ // A plain-object host without addEventListener still registers fine.
+ host({ registerTool() {} });
+ assert.equal((await registerAgentToolsAsync([tool('plain_host')], { onToolEvent() { throw Error('never called'); } })).registered, true);
+});
+
+test('a fully rejected pending registration removes its lifecycle listeners', async () => {
+ let attempts = 0;
+ const target = new EventTarget();
+ target.registerTool = () => { attempts += 1; return attempts === 1 ? Promise.reject(Error('no')) : Promise.resolve(); };
+ host(target);
+ const events = [];
+ const options = { onToolEvent: e => events.push(e) };
+ registerAgentTools([tool('retry_watch')], options);
+ await settle();
+ // First attempt fully rejected: its listeners must be gone before the retry.
+ assert.equal(registerAgentTools([tool('retry_watch')], options).reason, 'async_registration_pending');
+ await settle();
+ target.dispatchEvent(Object.assign(new Event('toolactivated'), { toolName: 'retry_watch' }));
+ assert.deepEqual(events, [{ type: 'toolactivated', toolName: 'retry_watch' }]);
+});
