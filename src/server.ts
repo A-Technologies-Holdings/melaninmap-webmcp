@@ -234,9 +234,9 @@ export type NonceLedger = {
  * Records are kept until the `expiresAt` the verifier passes (past the last
  * moment any verifier accepts the proof) and evicted lazily on the next call
  * or by `prune`. `maxEntries` bounds memory under a flood of distinct
- * nonces: when full, the soonest-expiring record is evicted — evicting a
- * live record early can only weaken replay protection, so size it so a
- * flood cannot fill it inside one proof lifetime.
+ * nonces: when full, new nonces are refused until a retained record expires.
+ * No live record is evicted early, because doing so would weaken replay
+ * protection for its still-valid proof.
  */
 export function createInMemoryNonceLedger(options?: { maxEntries?: number }): NonceLedger {
   const maxEntries = options?.maxEntries ?? 10_000;
@@ -256,12 +256,7 @@ export function createInMemoryNonceLedger(options?: { maxEntries?: number }): No
       const now = Date.now();
       evictExpired(now);
       if (used.has(nonce)) return false;
-      if (used.size >= maxEntries) {
-        let oldest: string | undefined;
-        let soonest = Infinity;
-        for (const [key, until] of used) if (until < soonest) { soonest = until; oldest = key; }
-        if (oldest !== undefined) used.delete(oldest);
-      }
+      if (used.size >= maxEntries) return false;
       used.set(nonce, expiresAt);
       return true;
     },
@@ -352,6 +347,12 @@ export type IdempotencyStore = {
     fingerprint: string,
     run: () => Promise<Value>,
   ): Promise<IdempotentResult<Value>>;
+  /**
+   * Drop a settled entry before its ttl. Optional: stores without it retain
+   * every completed result until expiry. Used to release outcomes that must
+   * never occupy retained-result capacity (for example a refused retry).
+   */
+  release?(key: string): void;
 };
 
 /** In-memory `IdempotencyStore`. Same single-instance caveat as the ledger. */
@@ -406,6 +407,9 @@ export function createInMemoryIdempotencyStore(options?: {
         entry.state = "unknown";
         throw error;
       }
+    },
+    release(key) {
+      entries.delete(key);
     },
   };
 }

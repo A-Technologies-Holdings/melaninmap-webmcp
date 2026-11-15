@@ -13,6 +13,10 @@ on:
         description: "Type the package version to confirm this is a deliberate release"
         required: true
         type: string
+      commit:
+        description: "Full 40-character SHA of the reviewed main commit to publish"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -24,17 +28,42 @@ jobs:
     timeout-minutes: 30
     environment: release
     steps:
+      - name: Require the reviewed main commit
+        env:
+          EXPECTED_RELEASE_COMMIT: ${{ inputs.commit }}
+          RELEASE_REF_IS_PROTECTED: ${{ github.ref_protected }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Releases must be dispatched from main, not $GITHUB_REF" >&2
+            exit 1
+          fi
+          if [[ "$RELEASE_REF_IS_PROTECTED" != "true" ]]; then
+            echo "The main release ref must be protected by a branch rule or ruleset" >&2
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "The release commit must be a full lowercase 40-character SHA" >&2
+            exit 1
+          fi
+          if [[ "$EXPECTED_RELEASE_COMMIT" != "$GITHUB_SHA" ]]; then
+            echo "The approved release commit does not match the dispatched main commit" >&2
+            exit 1
+          fi
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           registry-url: "https://registry.npmjs.org"
       - name: Confirm version matches package.json
+        env:
+          CONFIRM_VERSION: ${{ inputs.confirm }}
         run: |
           version="$(node -p 'require("./package.json").version')"
-          if [ "$version" != "${{ inputs.confirm }}" ]; then
-            echo "package.json is $version, not ${{ inputs.confirm }}" >&2
+          if [ "$version" != "$CONFIRM_VERSION" ]; then
+            printf 'package.json is %s, not %s\n' "$version" "$CONFIRM_VERSION" >&2
             exit 1
           fi
       - name: Full check gate

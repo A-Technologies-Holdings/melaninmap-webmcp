@@ -143,8 +143,9 @@ which the browser suite tracks.
    browsers that show tools in native UI.
 4. **`exposedTo`:** forward it through `RegisterAgentToolsOptions` for embedders
    that deliberately expose tools to another origin.
-5. **`untrustedContentHint`:** let read tools that return user-generated content
-   say so.
+5. **`untrustedContentHint`:** the reference directory read tools now set this
+   for catalog-derived responses. Keep it caller-selected in the generic SDK,
+   where only an application knows whether a read tool returns untrusted data.
 6. **`toolactivated` / `toolcancel`:** a source for the SLA-1605 `onDecision`
    hook or for telemetry. Cancellation itself already arrives through the
    execute signal.
