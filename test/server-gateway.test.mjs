@@ -314,6 +314,39 @@ test("an exact authenticated retry returns a dropped result without acting twice
   assert.equal(acts, 1);
 });
 
+test("refused retry outcomes do not occupy authenticated-retry capacity", async () => {
+  const ledger = createInMemoryNonceLedger();
+  const idempotency = createInMemoryIdempotencyStore();
+  const authenticatedRetries = createInMemoryIdempotencyStore({ maxEntries: 3 });
+  const options = {
+    secret, audience, ledger, idempotency, authenticatedRetries,
+    authorize: authorizeHoldTickets,
+  };
+  const api = createConsentGateway(options);
+  const base = {
+    toolName: "hold_tickets", args: ticketArgs(), remoteKey: "network",
+    authenticatedSubject: "alice",
+  };
+  const issued = await api.issueConsentProof(base);
+  const action = async () => ({ holdId: "h1" });
+  const first = await api.performConsequentialAction(
+    { ...base, proof: issued.body.proof, idempotencyKey: "k0" }, action,
+  );
+  assert.equal(first.status, 200);
+  // One spent proof resubmitted under many keys must not fill the store.
+  for (const key of ["k1", "k2", "k3", "k4"]) {
+    const replay = await api.performConsequentialAction(
+      { ...base, proof: issued.body.proof, idempotencyKey: key }, action,
+    );
+    assert.equal(replay.status, 403);
+  }
+  const fresh = await api.issueConsentProof(base);
+  const legitimate = await api.performConsequentialAction(
+    { ...base, proof: fresh.body.proof, idempotencyKey: "legit" }, action,
+  );
+  assert.equal(legitimate.status, 200);
+});
+
 test("a missing idempotency key does not consume an otherwise valid proof", async () => {
   const { api, refusals } = gateway();
   const base = {

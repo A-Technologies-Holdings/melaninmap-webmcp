@@ -364,7 +364,13 @@ export function createConsentGateway(options: {
       if (retry.status === "capacity_exceeded") {
         return refuse("idempotency_capacity", request);
       }
-      if (!retry.value.ok) return refuse(retry.value.reason, request);
+      if (!retry.value.ok) {
+        // A refused outcome must not occupy retained-result capacity: one
+        // spent proof resubmitted under many idempotency keys would
+        // otherwise fill the shared store and deny unrelated callers.
+        authenticatedRetries.release?.(retryIdentity);
+        return refuse(retry.value.reason, request);
+      }
       return {
         status: 200,
         body: {
