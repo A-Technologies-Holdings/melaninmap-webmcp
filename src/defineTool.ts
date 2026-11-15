@@ -527,6 +527,10 @@ export type ConsequentialToolSpec<Args> = Omit<ToolSpec<Args>, "execute"> & {
    * Build the prompt from the parsed arguments. Name the real target: "Hold 2
    * tickets to the Saturday history tour", not "Confirm this action". A person
    * who cannot tell what they are agreeing to has not agreed to it.
+   *
+   * Receives the same deep-frozen JSON snapshot as `execute`. Consequential
+   * arguments must therefore be plain JSON; values that cannot be snapshotted
+   * are rejected as `invalid_arguments` before anybody is prompted.
    */
   describeConsent: (args: Args) => ConsentRequest;
   /**
@@ -546,14 +550,11 @@ export type ConsequentialToolSpec<Args> = Omit<ToolSpec<Args>, "execute"> & {
    * When set, the action runs only with a proof, and receives it as
    * `consent.proof`.
    *
-   * With an exchange, the arguments are pinned BEFORE the prompt: what
-   * `parseArgs` returned is canonicalized, and a deep-frozen JSON copy is
-   * what `describeConsent`, the exchange and `execute` all receive, so the
-   * proof binds exactly what the person was shown. That requires
-   * `parseArgs` to return plain JSON (see `argsDigest`; a tool with no
-   * arguments returns `{}`). Anything else is `invalid_arguments`, and
-   * nobody is prompted. `execute` should send `args` to your server as
-   * received, since the server recomputes the digest from them.
+   * Every consequential tool pins its arguments before the prompt. With an
+   * exchange, that same canonical snapshot is also digested and passed to the
+   * exchange, so the proof binds exactly what the person was shown. `execute`
+   * should send `args` to your server as received, since the server recomputes
+   * the digest from them.
    */
   exchangeConsent?: ConsentExchange<Args>;
 };
@@ -632,24 +633,30 @@ export function defineConsequentialTool<Args>(
       const args = safeParseArgs(spec.parseArgs, raw);
       if (args === null) return encode(INVALID_ARGUMENTS);
 
-      // With an exchange, pin the arguments before anyone is asked. Digesting
-      // after the confirmation would let a person confirm a call that can
-      // never be verified, and would bind whatever the args had become by
-      // then — a describeConsent or a getter could show "2" and bind "200".
-      let pinned: { args: Args; digest: string } | undefined;
+      // Pin every consequential call before anyone is asked. Canonicalizing
+      // reads a getter or Proxy only while constructing this detached copy;
+      // describeConsent and execute then receive the same immutable value, so
+      // neither retained parser state nor the asynchronous prompt can swap the
+      // operation after it was shown.
+      //
+      // Preserve the configured-exchange error before validating arguments: a
+      // non-callable exchange is still a broken verification gate, regardless
+      // of what parseArgs returned.
+      if (exchange !== undefined && typeof exchange !== "function") return encode(UNVERIFIABLE);
+      let text: string;
+      try { text = canonicalArgs(args); }
+      catch { return encode(INVALID_ARGUMENTS); }
+      const gated = deepFreeze(JSON.parse(text) as Args);
+
+      // An exchange also binds the already-pinned value to a digest. Digesting
+      // before the prompt ensures a person is never asked about a call that
+      // cannot be verified (for example, without WebCrypto).
+      let digest: string | undefined;
       if (exchange !== undefined) {
-        // A configured exchange that is not callable is a gate that cannot
-        // verify. Fail closed rather than quietly skipping the step.
-        if (typeof exchange !== "function") return encode(UNVERIFIABLE);
-        let text: string;
-        try { text = canonicalArgs(args); }
-        catch { return encode(INVALID_ARGUMENTS); }
-        const snapshot = deepFreeze(JSON.parse(text) as Args);
-        try { pinned = { args: snapshot, digest: await digestCanonical(name, text) }; }
+        try { digest = await digestCanonical(name, text); }
         catch { return encode(UNVERIFIABLE); } // no WebCrypto: an insecure context
         if (isAborted(options.signal)) return encode(CANCELLED);
       }
-      const gated: Args = pinned ? pinned.args : args;
 
       // Restarted once the prompt is built: elapsedMs counts from asking the
       // surface, not from running describeConsent.
@@ -679,8 +686,8 @@ export function defineConsequentialTool<Args>(
       }
 
       let confirmation: ConsentConfirmation = decision;
-      if (exchange !== undefined && pinned !== undefined) {
-        const proof = await exchangeProof(exchange, name, pinned.args, pinned.digest, decision.auditToken, options.signal);
+      if (exchange !== undefined && digest !== undefined) {
+        const proof = await exchangeProof(exchange, name, gated, digest, decision.auditToken, options.signal);
         if (proof === EXCHANGE_CANCELLED || isAborted(options.signal)) {
           report("cancelled");
           return encode(CANCELLED);
