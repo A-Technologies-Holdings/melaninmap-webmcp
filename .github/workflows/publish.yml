@@ -31,10 +31,12 @@ jobs:
           cache: npm
           registry-url: "https://registry.npmjs.org"
       - name: Confirm version matches package.json
+        env:
+          CONFIRM_VERSION: ${{ inputs.confirm }}
         run: |
           version="$(node -p 'require("./package.json").version')"
-          if [ "$version" != "${{ inputs.confirm }}" ]; then
-            echo "package.json is $version, not ${{ inputs.confirm }}" >&2
+          if [ "$version" != "$CONFIRM_VERSION" ]; then
+            printf 'package.json is %s, not %s\n' "$version" "$CONFIRM_VERSION" >&2
             exit 1
           fi
       - name: Full check gate
