@@ -1,0 +1,496 @@
+- generic [ref=f2e3]:
+  - banner [ref=f2e4]:
+    - generic [ref=f2e5]:
+      - generic [ref=f2e6]:
+        - strong [ref=f2e7]: "Melanin Map GA readiness: issues, pipelines and execution backlog"
+        - generic [ref=f2e8]:
+          - text: As of
+          - time [ref=f2e9]: Oct 21, 2026
+      - generic [ref=f2e11]:
+        - button "More" [ref=f2e14] [cursor=pointer]
+        - button "Edit text and layout" [ref=f2e18] [cursor=pointer]
+        - button "Ask ChatGPT" [ref=f2e21] [cursor=pointer]
+        - button "Publish" [ref=f2e27] [cursor=pointer]
+  - region [aria-hidden] [ref=f2e29]:
+    - generic [ref=f2e31]:
+      - heading [level=2] [ref=f2e32]: Theme
+      - generic [ref=f2e33]:
+        - button [ref=f2e35] [cursor=pointer]:
+          - generic [ref=f2e37]: System
+        - button [ref=f2e39] [cursor=pointer]
+    - generic [ref=f2e41]:
+      - button [pressed] [ref=f2e42] [cursor=pointer]:
+        - generic [ref=f2e44]:
+          - strong [ref=f2e45]: Aa
+          - generic [ref=f2e46]: Sans serif
+        - generic [ref=f2e55]: Classic
+      - button [ref=f2e56] [cursor=pointer]:
+        - generic [ref=f2e58]:
+          - strong [ref=f2e59]: Aa
+          - generic [ref=f2e60]: Serif
+        - generic [ref=f2e69]: Neutral
+      - button [ref=f2e70] [cursor=pointer]:
+        - generic [ref=f2e72]:
+          - strong [ref=f2e73]: Aa
+          - generic [ref=f2e74]: Monospace
+        - generic [ref=f2e83]: Dark pixel
+      - button [ref=f2e84] [cursor=pointer]:
+        - generic [ref=f2e86]:
+          - strong [ref=f2e87]: Aa
+          - generic [ref=f2e88]: Monospace
+        - generic [ref=f2e97]: Scientific blue
+      - button [ref=f2e98] [cursor=pointer]:
+        - generic [ref=f2e100]:
+          - strong [ref=f2e101]: Aa
+          - generic [ref=f2e102]: Rounded sans
+        - generic [ref=f2e111]: Sticker pop
+  - main [ref=f2e112]:
+    - article [ref=f2e113]:
+      - generic [ref=f2e114]:
+        - paragraph [ref=f2e115]: GA READINESS • UPDATED OCTOBER 21, 2026 • AMERICA/CHICAGO
+        - 'heading "Melanin Map GA readiness: issues, pipelines and execution backlog" [level=1] [ref=f2e116]'
+        - paragraph [ref=f2e119]:
+          - text: Admin, landing and business now serve verified security release
+          - strong [ref=f2e120]: 0ac9e925
+          - text: . Convex production is stamped with a valid epoch on the same source. GA remains
+          - strong [ref=f2e121]: NO-GO
+          - text: ": the fresh October21 release-health snapshot has12 blockers, and merchant outcome authorization, physical-device/store proof, content rights and remaining feature gates are unresolved. The52 findings include historical defects, completed repairs and optional backlog; they are not52 current production incidents."
+      - generic [ref=f2e122]:
+        - generic [ref=f2e123]:
+          - generic [ref=f2e124]:
+            - heading "Audit findings More information" [level=2] [ref=f2e125]:
+              - generic [ref=f2e126]: Audit findings
+              - button "More information" [ref=f2e128] [cursor=pointer]
+            - button "Audit findings actions" [ref=f2e131] [cursor=pointer]
+          - paragraph [ref=f2e134]: "52"
+        - generic [ref=f2e135]:
+          - generic [ref=f2e136]:
+            - heading "Scoped active work More information" [level=2] [ref=f2e137]:
+              - generic [ref=f2e138]: Scoped active work
+              - button "More information" [ref=f2e140] [cursor=pointer]
+            - button "Scoped active work actions" [ref=f2e143] [cursor=pointer]
+          - paragraph [ref=f2e146]: "181"
+      - generic [ref=f2e147]:
+        - generic [ref=f2e148]:
+          - heading "What blocks GA" [level=2] [ref=f2e149]
+          - button "What blocks GA actions" [ref=f2e152] [cursor=pointer]
+        - generic [ref=f2e155]:
+          - paragraph [ref=f2e156]:
+            - strong [ref=f2e157]: Current deployment is verified.
+            - text: All three Cloudflare sites serve0ac9e925 at100 percent traffic with HTTP200 roots, preserved HTTPS redirects and original public telemetry. Signed-in factory and platform-ops render correctly; the empty factory region registry is reported truthfully. Both public MCP routes reject65,537-byte unauthenticated normal and chunked requests with413 without paid tool calls. Convex production now reports source0ac9e925, identity stamped and epochValid=true, epoch d256eacd6134f2716a6c5e5c6f7c0072. The approved helper initially failed its default future-project binding, then succeeded using the explicit founder-approved legacy-project ADC path; old epochs are historical evidence.
+          - paragraph [ref=f2e158]:
+            - strong [ref=f2e159]: Fresh readiness remains blocked.
+            - text: "The20:47 UTC October21 release-health CLI snapshot contains12 blockers: seven route/session freshness checks and five commerce checks. Aged24-hour proof is not itself a new outage. Sentry UI is Healthy on a three-hour receipt; scheduled source-sync at17:19 October21 covered eight lanes with zero duplicates and aggregate degraded. Google incident0.oe1k9mie8hu1 is now CLOSED, independently reloaded at20:55; no mirrored incident apply occurred."
+          - paragraph [ref=f2e160]:
+            - strong [ref=f2e161]: Separate owner and release prerequisites remain.
+            - text: The founder has no Granny\u2019s Clover merchant authorization, so completed-purchase callbacks remain blocked while public ordering handoff is approved. Convex\u2019s fresh October21 payment warning still requires SLA1822 billing reconciliation; no payment or outage inference is made. Physical signed-device/store, content rights and publication acceptance remain distinct. No merchant activation, order, incident apply or GA launch is claimed.
+      - generic [ref=f2e162]:
+        - generic [ref=f2e163]:
+          - heading "Execution program and boundaries" [level=2] [ref=f2e164]
+          - button "Execution program and boundaries actions" [ref=f2e167] [cursor=pointer]
+        - generic [ref=f2e170]:
+          - paragraph [ref=f2e171]:
+            - text: Program
+            - link "SLA-1778" [ref=f2e172] [cursor=pointer]:
+              - /url: https://linear.app/slam-security-inc/issue/SLA-1778
+            - text: separates the181 pre-existing scoped issues from new remediation work. Security PR2975 passed exact301e full original gates (receipt6304194047), independent source review and current code review, then merged as tree-equivalent0ac9e925. Under explicit user authorization, approved helpers deployed all three sites and Convex. Safe source/version/rollback metadata is in cloudflare-security-deploy-0ac9-proof.json; backend identity receipt is /tmp/mm-ga-0ac9-convex-deployed-identity.json. No source/fingerprint guard or audit exception was weakened.
+          - paragraph [ref=f2e173]:
+            - strong [ref=f2e174]: Feature gates remain unfinished.
+            - text: PR2973 first0588 policy failed a malformed heading; the real one-line repair is frozen0cf5126b63d09f250fdcec4b09be03f670d2bf4e and its original full run is active, not green. PR2965 current9195d93fb20854fafc7ce2a3a6eb7f5e568ea7b8 and PR2961 current084edf63fec732b69a55e66e4b7058d9136960c7 await full gates; bounded20 wire cases and six SQL cases passed. Current PR2966 a027 and PR2974 298b have bounded read-only review and zero threads, not full gate or merge clearance. Earlier focused receipts, assertion failures, ENOSPC/Python setup retries and provenance limits remain dated history in the findings.
+          - paragraph [ref=f2e175]:
+            - strong [ref=f2e176]: Provider and product evidence are bounded.
+            - text: Fresh release health has12 blockers (/tmp/mm-ga-release-health-oct21.json), superseding the earlier five/seven snapshots. The old Google incident is CLOSED, but mirrors were not applied. Sentry ingestion recovery and scheduled source receipts do not prove fresh voice or commerce completion. Merchant authorization is unavailable under SLA1818; no external outreach, claim, purchase or callback proof was invented. Optional MCP clarity SLA1821 remains nonblocking post-GA backlog. Existing billing/review quotas are not approvals, and the persistent Convex billing banner remains unresolved under SLA1822. Repo, backend, public web, signed-device, store/tester and founder GA acceptance are reported separately.
+      - generic [ref=f2e177]:
+        - generic [ref=f2e178]:
+          - heading "Findings register — select a row for evidence and acceptance" [level=2] [ref=f2e179]
+          - button "Findings register — select a row for evidence and acceptance actions" [ref=f2e182] [cursor=pointer]
+        - textbox "Search data" [ref=f2e187]
+        - region "Searchable audit findings table" [ref=f2e188]:
+          - table [ref=f2e189]:
+            - caption [ref=f2e190]: Searchable audit findings
+            - rowgroup [ref=f2e191]:
+              - row [ref=f2e192]:
+                - columnheader [ref=f2e193]:
+                  - button "Finding" [ref=f2e194] [cursor=pointer]
+                - columnheader [ref=f2e195]:
+                  - button "Priority" [ref=f2e196] [cursor=pointer]
+                - columnheader [ref=f2e197]:
+                  - button "Pipeline" [ref=f2e198] [cursor=pointer]
+                - columnheader [ref=f2e199]:
+                  - button "Issue" [ref=f2e200] [cursor=pointer]
+                - columnheader [ref=f2e201]:
+                  - button "Current state" [ref=f2e202] [cursor=pointer]
+                - columnheader [ref=f2e203]:
+                  - button "Evidence status" [ref=f2e204] [cursor=pointer]
+            - rowgroup [ref=f2e205]:
+              - row [ref=f2e206] [cursor=pointer]:
+                - cell [ref=f2e207]:
+                  - generic [ref=f2e208]:
+                    - text: AUDIT-01
+                    - 'button "Inspect AUDIT-01: Admin release omits the content factory" [pressed] [ref=f2e209]': →
+                - cell "P1" [ref=f2e210]
+                - cell "Deployment" [ref=f2e211]
+                - cell "Admin release omits the content factory" [ref=f2e212]
+                - cell "0ac9 live; signed-in factory/platformops accepted; empty registry truthful" [ref=f2e213]
+                - cell "Observed defect" [ref=f2e214]
+              - row [ref=f2e215] [cursor=pointer]:
+                - cell [ref=f2e216]:
+                  - generic [ref=f2e217]:
+                    - text: AUDIT-02
+                    - 'button "Inspect AUDIT-02: Restore source-sync readiness in the founder-confirmed GA project" [ref=f2e218]': →
+                - cell "P1" [ref=f2e219]
+                - cell "Cloud operations" [ref=f2e220]
+                - cell "Restore source-sync readiness in the founder-confirmed GA project" [ref=f2e221]
+                - cell "—" [ref=f2e222]
+                - cell "Scheduled recurrence restored; aggregate blocked" [ref=f2e223]
+              - row [ref=f2e224] [cursor=pointer]:
+                - cell [ref=f2e225]:
+                  - generic [ref=f2e226]:
+                    - text: AUDIT-03
+                    - 'button "Inspect AUDIT-03: Reconcile Google Places-derived published business state" [ref=f2e227]': →
+                - cell "P1" [ref=f2e228]
+                - cell "Data integrity" [ref=f2e229]
+                - cell "Reconcile Google Places-derived published business state" [ref=f2e230]
+                - cell "—" [ref=f2e231]
+                - cell "Observed invariant failure" [ref=f2e232]
+              - row [ref=f2e233] [cursor=pointer]:
+                - cell [ref=f2e234]:
+                  - generic [ref=f2e235]:
+                    - text: AUDIT-04
+                    - 'button "Inspect AUDIT-04: Reconcile published stories failing exposure policy" [ref=f2e236]': →
+                - cell "P1" [ref=f2e237]
+                - cell "Data integrity" [ref=f2e238]
+                - cell "Reconcile published stories failing exposure policy" [ref=f2e239]
+                - cell "—" [ref=f2e240]
+                - cell "Observed invariant failure" [ref=f2e241]
+              - row [ref=f2e242] [cursor=pointer]:
+                - cell [ref=f2e243]:
+                  - generic [ref=f2e244]:
+                    - text: AUDIT-05
+                    - 'button "Inspect AUDIT-05: Restore source-sync freshness and trustworthy statuses" [ref=f2e245]': →
+                - cell "P1" [ref=f2e246]
+                - cell "Monitoring" [ref=f2e247]
+                - cell "Restore source-sync freshness and trustworthy statuses" [ref=f2e248]
+                - cell "w9mhw23:19 completed/degraded8lanes8duplicates; no fresh individualSentry persistence proof" [ref=f2e249]
+                - cell "Observed stale evidence" [ref=f2e250]
+              - row [ref=f2e251] [cursor=pointer]:
+                - cell [ref=f2e252]:
+                  - generic [ref=f2e253]:
+                    - text: AUDIT-06
+                    - 'button "Inspect AUDIT-06: Investigate fresh fallback_token_invalid failures" [ref=f2e254]': →
+                - cell "P1" [ref=f2e255]
+                - cell "AI sessions" [ref=f2e256]
+                - cell "Investigate fresh fallback_token_invalid failures" [ref=f2e257]
+                - cell "Oct21releasehealth12blockers:7route/session freshness+5commerce; aged proof not new outage" [ref=f2e258]
+                - cell "Observed failure records" [ref=f2e259]
+              - row [ref=f2e260] [cursor=pointer]:
+                - cell [ref=f2e261]:
+                  - generic [ref=f2e262]:
+                    - text: AUDIT-07
+                    - 'button "Inspect AUDIT-07: Burn down the stale review/import backlog safely" [ref=f2e263]': →
+                - cell "P1" [ref=f2e264]
+                - cell "Content operations" [ref=f2e265]
+                - cell "Burn down the stale review/import backlog safely" [ref=f2e266]
+                - cell "—" [ref=f2e267]
+                - cell "Observed backlog" [ref=f2e268]
+              - row [ref=f2e269] [cursor=pointer]:
+                - cell [ref=f2e270]:
+                  - generic [ref=f2e271]:
+                    - text: AUDIT-08
+                    - 'button "Inspect AUDIT-08: Make readiness, scores and rights blockers agree" [ref=f2e272]': →
+                - cell "P1" [ref=f2e273]
+                - cell "Content verification" [ref=f2e274]
+                - cell "Make readiness, scores and rights blockers agree" [ref=f2e275]
+                - cell "—" [ref=f2e276]
+                - cell "Observed conflicting readiness signals" [ref=f2e277]
+        - generic [ref=f2e278]:
+          - generic [ref=f2e279]: 1–8 of 52 results
+          - generic [ref=f2e280]:
+            - generic [ref=f2e281]: Page 1 of 7
+            - button "Previous page" [disabled] [ref=f2e282] [cursor=pointer]
+            - button "Next page" [ref=f2e284] [cursor=pointer]
+      - generic [ref=f2e286]:
+        - generic [ref=f2e287]:
+          - heading "AUDIT-01 · Admin release omits the content factory" [level=2] [ref=f2e288]
+          - button "AUDIT-01 · Admin release omits the content factory actions" [ref=f2e291] [cursor=pointer]
+        - generic [ref=f2e293]:
+          - paragraph [ref=f2e294]:
+            - strong [ref=f2e295]: P1 · Deployment · Observed defect
+          - paragraph [ref=f2e296]:
+            - strong [ref=f2e297]: "Current state:"
+            - text: 0ac9 live; signed-in factory/platformops accepted; empty registry truthful
+          - heading "Dated evidence and verification history" [level=3] [ref=f2e298]
+          - paragraph [ref=f2e299]: "/factory shows Admin screen not found; live Worker SHA cec9da76 differs from local source 738f403b, which contains factory routes and navigation. October 20 exact-main 24d2c16 admin predeployment checks pass: 28 test files / 208 tests, typecheck, lint, audit allowlist, contracts, routing/policy, Vinext build and Wrangler dry run. The CLI is unauthenticated, so no publication occurred. All three surfaces now pass prepublish build/dry-run; deployment is still pending authenticated operator execution. Scoped authenticated Wrangler deployments inventory now succeeds and confirms the unchanged old Worker versions at 100% traffic; no missing additional scopes observed. Prepublish receipt /tmp/mm-ga-cloudflare-prepublish-receipt.json retains rollback baselines. Oct20 14:12Z: approved admin production helper deployed reviewed main 6cef46b2; Worker a24a7456-b62f-43fa-9d7d-74fafaa8ef7d. Independent public root, /factory and /platform-ops all HTTP200 with exact SHA; HTTP nested path/query redirects301 unchanged. Previous rollback version96e21354-5e02-490c-80ea-b1a47df0d339. Signed-in export/UI acceptance pending; helper E2E skipped without configured email. Landing/business remain old deployments on hold. Backend functions/schema uploaded, but native epoch activation refused generated-secret typing drift; backend/native not green. Deployed-admin signed-in acceptance verified: root downloaded gcp-incident-mirror-1792505548861.json, independently checked26 rows with all6 diagnostic fields. Read-only planner /tmp/mm-ga-live-admin-incident-plan-deployed.json exit0 produces25 closure proposals and1 provider_not_closed skip (0.oe1k9mie8hu1), providerOpenCount1. No incident apply performed. Backend functions/schema partially pushed, epochValid=false; canonical generated typing PR2963 head ae2166c01808c97b08938f8714024fd1f90c323d remains pending. Landing/business remain held. Latest root independent live backend read: epochValid=true, sourcee22c7d2d2fffea661894f9ad60b1673a36d51ade, epochbe13a64b406b7bad926d903e84dcd501; prior partial-push/invalid-epoch blocker is superseded. Current reviewed main2e5fd810 includes merged2960 title decoding,2948 security backports,2964 project binding. Independent Cloudflare roots all200: admin6cef46b2, landing01363120, business288978c5. Clean convergence checkout pinned2e5fd810; no further site deployment yet, awaiting root coordination and fresh helper gates. Current convergence COMPLETE for public deployment: approved admin, landing and business helpers deployed reviewed main 2e5fd8102f6142d8a7a998938b0d6783dc0dca02 sequentially. Admin Worker06e0b58e-b044-4c00-8f2a-eb80dd32c744; landing37ecc403-a9d2-4266-89f5-a57e898a9ce8; business253ee974-21c8-4847-b8b8-c01cb4f8c3e9. Independent all3 roots and admin factory/gap-loop/platform-ops plus landing campaign slash route HTTP200 exactSHA; old campaign loop resolved. All3 HTTP301 preserve query. Original public PostHog/GTM identifiers confirmed in live landing assets. Receipt /tmp/mm-ga-cloudflare-2e5-live-receipt.json includes rollbackversions. New2e5 signed-in acceptance pending root (earlier6cef export accepted). Backend epoch remains independently valid; no Convex push in this lane. Linear SLA1781 comment9ffe7a71 records receipts."
+          - heading "Acceptance" [level=3] [ref=f2e300]
+          - paragraph [ref=f2e301]: Compare the live SHA with reviewed main; inventory already-landed repairs before writing code. Pass admin gates, deploy through the approved helper, then verify factory, promotions, media and route headers on the deployed SHA.
+          - paragraph [ref=f2e302]:
+            - strong [ref=f2e303]: "Execution lane:"
+            - text: Cloud agent + deploy operator
+          - paragraph [ref=f2e304]:
+            - strong [ref=f2e305]: "Remediation issue:"
+            - link "SLA-1781" [ref=f2e306] [cursor=pointer]:
+              - /url: https://linear.app/slam-security-inc/issue/SLA-1781/ga-converge-cloudflare-admin-landing-and-business-deployments-with
+          - paragraph [ref=f2e307]:
+            - strong [ref=f2e308]: "Existing work:"
+            - text: SLA-1399 (Done; follow-up needed)
+          - paragraph [ref=f2e309]:
+            - strong [ref=f2e310]: "Likely files:"
+            - text: admin-site/components/Shell.tsx; admin-site/app/factory; scripts/deploy-admin-production.sh
+          - link "Open evidence surface ↗" [ref=f2e311] [cursor=pointer]:
+            - /url: https://admin.melaninmap.app/factory
+      - generic [ref=f2e312]:
+        - generic [ref=f2e313]:
+          - heading "New remediation program — dispatch is not completion" [level=2] [ref=f2e314]
+          - button "New remediation program — dispatch is not completion actions" [ref=f2e317] [cursor=pointer]
+        - textbox "Search data" [ref=f2e322]
+        - region "Remediation work created during this audit table" [ref=f2e323]:
+          - table [ref=f2e324]:
+            - caption [ref=f2e325]: Remediation work created during this audit
+            - rowgroup [ref=f2e326]:
+              - row [ref=f2e327]:
+                - columnheader [ref=f2e328]:
+                  - button "Issue" [ref=f2e329] [cursor=pointer]
+                - columnheader [ref=f2e330]:
+                  - button "Verified execution status" [ref=f2e331] [cursor=pointer]
+                - columnheader [ref=f2e332]:
+                  - button "Lane" [ref=f2e333] [cursor=pointer]
+            - rowgroup [ref=f2e334]:
+              - row [ref=f2e335]:
+                - cell [ref=f2e336]:
+                  - link "SLA-1779" [ref=f2e337] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1779/ga-correctly-flag-capped-per-status-content-counts-in-platform-ops
+                - cell "Repair PR observed merged — production deployment/acceptance separate" [ref=f2e338]
+                - cell "Program / local operator" [ref=f2e339]
+              - row [ref=f2e340]:
+                - cell [ref=f2e341]:
+                  - link "SLA-1780" [ref=f2e342] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1780/ga-show-actual-cloud-run-ready-condition-and-scheduler-failure-in-ops
+                - cell "Repair PR observed merged — production deployment/acceptance separate" [ref=f2e343]
+                - cell "Program / local operator" [ref=f2e344]
+              - row [ref=f2e345]:
+                - cell [ref=f2e346]:
+                  - link "SLA-1781" [ref=f2e347] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1781/ga-converge-cloudflare-admin-landing-and-business-deployments-with
+                - cell "Done:3 sites live2e5, public and signed-in admin accepted; business account flow separate" [ref=f2e348]
+                - cell "Program / local operator" [ref=f2e349]
+              - row [ref=f2e350]:
+                - cell [ref=f2e351]:
+                  - link "SLA-1782" [ref=f2e352] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1782/ga-restore-source-sync-readiness-in-the-intended-gcp-project-without
+                - cell "Source-sync8 lanes0 duplicates SUCCESS; Sentry live healthy;26 old mirrors remain" [ref=f2e353]
+                - cell "Program / local operator" [ref=f2e354]
+              - row [ref=f2e355]:
+                - cell [ref=f2e356]:
+                  - link "SLA-1783" [ref=f2e357] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1783/ga-show-actionable-service-unavailable-errors-when-admin
+                - cell "Repair PR observed merged — production deployment/acceptance separate" [ref=f2e358]
+                - cell "Cursor" [ref=f2e359]
+              - row [ref=f2e360]:
+                - cell [ref=f2e361]:
+                  - link "SLA-1784" [ref=f2e362] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1784/ga-replace-blocked-finance-workbook-embed-with-a-secure-authenticated
+                - cell "Repair PR observed merged — production deployment/acceptance separate" [ref=f2e363]
+                - cell "Cursor" [ref=f2e364]
+              - row [ref=f2e365]:
+                - cell [ref=f2e366]:
+                  - link "SLA-1785" [ref=f2e367] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1785/ga-label-ingestion-queue-counts-by-evidence-basis-rather-than-full
+                - cell "Repair PR observed merged — production deployment/acceptance separate" [ref=f2e368]
+                - cell "Cursor" [ref=f2e369]
+              - row [ref=f2e370]:
+                - cell [ref=f2e371]:
+                  - link "SLA-1786" [ref=f2e372] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1786/ga-reconcile-stored-catalog-publication-state-with-exposure-and
+                - cell "Tracked — completion unverified" [ref=f2e373]
+                - cell "Program / local operator" [ref=f2e374]
+        - generic [ref=f2e375]:
+          - generic [ref=f2e376]: 1–8 of 41 results
+          - generic [ref=f2e377]:
+            - generic [ref=f2e378]: Page 1 of 6
+            - button "Previous page" [disabled] [ref=f2e379] [cursor=pointer]
+            - button "Next page" [ref=f2e381] [cursor=pointer]
+      - generic [ref=f2e383]:
+        - generic [ref=f2e384]:
+          - heading "Existing Melanin Map backlog" [level=2] [ref=f2e385]
+          - button "Existing Melanin Map backlog actions" [ref=f2e388] [cursor=pointer]
+        - paragraph [ref=f2e392]:
+          - text: The pre-existing snapshot contains
+          - strong [ref=f2e393]: "181 active issues: 65 Backlog, 20 Todo, 52 In Progress and 44 In Review"
+          - text: . It includes parent epics and their children; it is not 181 independent defects. Search by issue ID, title or state to reuse existing work. Status and ownership need fresh review before dispatch.
+      - generic [ref=f2e394]:
+        - generic [ref=f2e395]:
+          - heading "181 scoped active issues" [level=2] [ref=f2e396]
+          - button "181 scoped active issues actions" [ref=f2e399] [cursor=pointer]
+        - textbox "Search data" [ref=f2e404]
+        - region "Existing Melanin Map active issue inventory table" [ref=f2e405]:
+          - table [ref=f2e406]:
+            - caption [ref=f2e407]: Existing Melanin Map active issue inventory
+            - rowgroup [ref=f2e408]:
+              - row [ref=f2e409]:
+                - columnheader [ref=f2e410]:
+                  - button "Issue" [ref=f2e411] [cursor=pointer]
+                - columnheader [ref=f2e412]:
+                  - button "Work item" [ref=f2e413] [cursor=pointer]
+                - columnheader [ref=f2e414]:
+                  - button "State" [ref=f2e415] [cursor=pointer]
+                - columnheader [ref=f2e416]:
+                  - button "Priority" [ref=f2e417] [cursor=pointer]
+            - rowgroup [ref=f2e418]:
+              - row [ref=f2e419]:
+                - cell [ref=f2e420]:
+                  - link "SLA-1360" [ref=f2e421] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1360/provision-conductor-cloud-environment-variables-for-release-lanes
+                - cell "Provision Conductor Cloud environment variables for release lanes" [ref=f2e422]
+                - cell "Backlog" [ref=f2e423]
+                - cell "High" [ref=f2e424]
+              - row [ref=f2e425]:
+                - cell [ref=f2e426]:
+                  - link "SLA-1582" [ref=f2e427] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1582/v15-w5-big-mama-agentic-actions-on-b2b-staging
+                - 'cell "v1.5 W5: Big Mama agentic actions on B2B staging" [ref=f2e428]'
+                - cell "Backlog" [ref=f2e429]
+                - cell "High" [ref=f2e430]
+              - row [ref=f2e431]:
+                - cell [ref=f2e432]:
+                  - link "SLA-1584" [ref=f2e433] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1584/v15-w6-production-repeat-blocked-until-a-date-and-rehearsal-receipts
+                - 'cell "v1.5 W6: production repeat, blocked until a date and rehearsal receipts" [ref=f2e434]'
+                - cell "Backlog" [ref=f2e435]
+                - cell "Urgent" [ref=f2e436]
+              - row [ref=f2e437]:
+                - cell [ref=f2e438]:
+                  - link "SLA-1583" [ref=f2e439] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1583/v15-w5-v1-and-v2-bundle-cannot-hide-a-dark-plane
+                - 'cell "v1.5 W5: v1 and v2 bundle cannot hide a dark plane" [ref=f2e440]'
+                - cell "Backlog" [ref=f2e441]
+                - cell "High" [ref=f2e442]
+              - row [ref=f2e443]:
+                - cell [ref=f2e444]:
+                  - link "SLA-1581" [ref=f2e445] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1581/v15-w5-big-mama-agentic-actions-on-b2c-staging
+                - 'cell "v1.5 W5: Big Mama agentic actions on B2C staging" [ref=f2e446]'
+                - cell "Backlog" [ref=f2e447]
+                - cell "High" [ref=f2e448]
+              - row [ref=f2e449]:
+                - cell [ref=f2e450]:
+                  - link "SLA-1580" [ref=f2e451] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1580/v15-w4-b2b-journey-dry-run-on-staging
+                - 'cell "v1.5 W4: B2B journey dry run on staging" [ref=f2e452]'
+                - cell "Backlog" [ref=f2e453]
+                - cell "High" [ref=f2e454]
+              - row [ref=f2e455]:
+                - cell [ref=f2e456]:
+                  - link "SLA-1579" [ref=f2e457] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1579/v15-w4-b2c-journey-dry-run-on-staging
+                - 'cell "v1.5 W4: B2C journey dry run on staging" [ref=f2e458]'
+                - cell "Backlog" [ref=f2e459]
+                - cell "High" [ref=f2e460]
+              - row [ref=f2e461]:
+                - cell [ref=f2e462]:
+                  - link "SLA-1578" [ref=f2e463] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1578/v15-w3-rollback-drill-on-the-staging-host
+                - 'cell "v1.5 W3: rollback drill on the staging host" [ref=f2e464]'
+                - cell "Backlog" [ref=f2e465]
+                - cell "High" [ref=f2e466]
+        - generic [ref=f2e467]:
+          - generic [ref=f2e468]: 1–8 of 181 results
+          - generic [ref=f2e469]:
+            - generic [ref=f2e470]: Page 1 of 23
+            - button "Previous page" [disabled] [ref=f2e471] [cursor=pointer]
+            - button "Next page" [ref=f2e473] [cursor=pointer]
+      - generic [ref=f2e475]:
+        - generic [ref=f2e476]:
+          - 'heading "Separate triage: 83 unprojected tasks" [level=2] [ref=f2e477]'
+          - 'button "Separate triage: 83 unprojected tasks actions" [ref=f2e480] [cursor=pointer]'
+        - paragraph [ref=f2e484]:
+          - text: These tasks have no project. Some may relate to Melanin Map, but
+          - strong [ref=f2e485]: they are not included in the 181 scoped issues
+          - text: . Confirm relevance, duplicates and project ownership before moving or assigning them.
+      - generic [ref=f2e486]:
+        - generic [ref=f2e487]:
+          - heading "Unprojected work — relevance not established" [level=2] [ref=f2e488]
+          - button "Unprojected work — relevance not established actions" [ref=f2e491] [cursor=pointer]
+        - textbox "Search data" [ref=f2e496]
+        - region "Unprojected active issues for separate triage table" [ref=f2e497]:
+          - table [ref=f2e498]:
+            - caption [ref=f2e499]: Unprojected active issues for separate triage
+            - rowgroup [ref=f2e500]:
+              - row [ref=f2e501]:
+                - columnheader [ref=f2e502]:
+                  - button "Issue" [ref=f2e503] [cursor=pointer]
+                - columnheader [ref=f2e504]:
+                  - button "Work item" [ref=f2e505] [cursor=pointer]
+                - columnheader [ref=f2e506]:
+                  - button "State" [ref=f2e507] [cursor=pointer]
+                - columnheader [ref=f2e508]:
+                  - button "Priority" [ref=f2e509] [cursor=pointer]
+            - rowgroup [ref=f2e510]:
+              - row [ref=f2e511]:
+                - cell [ref=f2e512]:
+                  - link "SLA-1774" [ref=f2e513] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1774/crisis-hold-carry-ingestion-hold-across-gateway-reconnect-and-convex
+                - 'cell "Crisis hold: carry ingestion hold across gateway reconnect and Convex live-voice turns" [ref=f2e514]'
+                - cell "Backlog" [ref=f2e515]
+                - cell "High" [ref=f2e516]
+              - row [ref=f2e517]:
+                - cell [ref=f2e518]:
+                  - link "SLA-1769" [ref=f2e519] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1769/fixsafety-close-crisis-classifier-unicode-drift-between-convexweb-and
+                - 'cell "fix(safety): close crisis-classifier Unicode drift between Convex/web and the gateway" [ref=f2e520]'
+                - cell "Backlog" [ref=f2e521]
+                - cell "Medium" [ref=f2e522]
+              - row [ref=f2e523]:
+                - cell [ref=f2e524]:
+                  - link "SLA-1775" [ref=f2e525] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1775/adk-gateway-crisis-gate-exceeds-50-ms-at-4k-on-unicode-space-inputs
+                - cell "ADK gateway crisis gate exceeds 50 ms at 4k on Unicode-space inputs (main)" [ref=f2e526]
+                - cell "Backlog" [ref=f2e527]
+                - cell "Medium" [ref=f2e528]
+              - row [ref=f2e529]:
+                - cell [ref=f2e530]:
+                  - link "SLA-1773" [ref=f2e531] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1773/sla-1740-follow-up-gateway-owned-provider-error-events-after-sdk-log
+                - 'cell "SLA-1740 follow-up: gateway-owned provider error events after SDK log suppression" [ref=f2e532]'
+                - cell "Backlog" [ref=f2e533]
+                - cell "Low" [ref=f2e534]
+              - row [ref=f2e535]:
+                - cell [ref=f2e536]:
+                  - link "SLA-1772" [ref=f2e537] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1772/harden-the-agent-pre-tool-guard-fail-closed-cover-bypasses-from-2888
+                - 'cell "Harden the agent pre-tool guard: fail closed, cover bypasses (from #2888 audit)" [ref=f2e538]'
+                - cell "Backlog" [ref=f2e539]
+                - cell "High" [ref=f2e540]
+              - row [ref=f2e541]:
+                - cell [ref=f2e542]:
+                  - link "SLA-837" [ref=f2e543] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-837/p0-incident-android-play-internal-beta-app-crashes-cant-log-in-no
+                - 'cell "[P0 incident] Android Play Internal beta: app crashes / can''t log in / no Google button — stale binary vs auto-deployed backend" [ref=f2e544]'
+                - cell "Backlog" [ref=f2e545]
+                - cell "Urgent" [ref=f2e546]
+              - row [ref=f2e547]:
+                - cell [ref=f2e548]:
+                  - link "SLA-1765" [ref=f2e549] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1765/v1-pick-a-native-build-r22r24r25-via-2863-and-ship-to-testflight-play
+                - 'cell "V1: Pick a native build (r22/r24/r25 via #2863) and ship to TestFlight + Play test track" [ref=f2e550]'
+                - cell "Backlog" [ref=f2e551]
+                - cell "No priority" [ref=f2e552]
+              - row [ref=f2e553]:
+                - cell [ref=f2e554]:
+                  - link "SLA-1705" [ref=f2e555] [cursor=pointer]:
+                    - /url: https://linear.app/slam-security-inc/issue/SLA-1705/crisis-classifier-fail-closed-over-blocks-after-2816-codex-p2s-at
+                - 'cell "Crisis classifier: fail-closed over-blocks after #2816 (Codex P2s at crisisSafety.ts:226/:284)" [ref=f2e556]'
+                - cell "Backlog" [ref=f2e557]
+                - cell "Medium" [ref=f2e558]
+        - generic [ref=f2e559]:
+          - generic [ref=f2e560]: 1–8 of 83 results
+          - generic [ref=f2e561]:
+            - generic [ref=f2e562]: Page 1 of 11
+            - button "Previous page" [disabled] [ref=f2e563] [cursor=pointer]
+            - button "Next page" [ref=f2e565] [cursor=pointer]
+      - generic [ref=f2e567]:
+        - generic [ref=f2e568]:
+          - heading "Evidence limits and GA proof" [level=2] [ref=f2e569]
+          - button "Evidence limits and GA proof actions" [ref=f2e572] [cursor=pointer]
+        - generic [ref=f2e575]:
+          - paragraph [ref=f2e576]: 42 admin surfaces were reviewed. Every mutation, customer journey, authenticated business flow and native release was not exercised. Read-only HTTP checks verified roots, marketing routes, robots, sitemap, agent manifests and redirect behavior; no paid AI turn was executed. Cloudflare reported zero Worker runtime errors in the last 24 hours, which does not prove Convex or GCP health.
+          - paragraph [ref=f2e577]: Repo-green, backend/OTA-green, signed-device-green, store/tester-green and founder release approval require separate receipts. Stale dashboard values are not current provider state. Counts captured at different times or through different scopes should not be joined without reconciliation. This artifact is local and has not been published.

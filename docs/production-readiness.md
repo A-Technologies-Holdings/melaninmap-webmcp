@@ -71,17 +71,28 @@ The browser gate is half the system. The other half lives in
 [`examples/serverGateway.ts`](../examples/serverGateway.ts), a copyable,
 framework-agnostic reference:
 
-- Proofs are minted only by `issueConsentProof`, rate limited on the
-  server-observed network key (`remoteKey`). Never key a limiter solely on
-  a client-supplied installation id — the caller can rotate it for free.
-  Behind a reverse proxy, read the client address from the platform-set
-  forwarding header on the trusted hop, never from the request body.
-- `performConsequentialAction` validates the idempotency key, authenticates
-  the immutable request, and coordinates exact transport retries before the
-  single-use nonce consume. Only the same proof fingerprint, key, digest,
-  audience and subject can replay its retained result; every changed identity
-  must spend a fresh proof. The action then runs under its logical idempotency
-  key, so the same key with different arguments is a conflict, never a second
+- Proofs are minted only by `issueConsentProof`, and only after the required
+  `authorize` callback returns a normalized operation. A missing, throwing,
+  denying or malformed policy fails closed. The gateway signs the policy
+  result, never the caller's tool and arguments directly.
+- Start from `createHoldTicketsAuthorizationPolicy`, then replace its names
+  and storage lookup for your application. It demonstrates a concrete tool
+  allowlist, exact argument schema, hard quantity ceiling, subject binding,
+  expiry and target binding to a server-minted recommendation. Populate
+  `authenticatedSubject` from the server session, never from the request
+  body.
+- Issuance and action have independent limits on the server-observed network
+  key (`remoteKey`). Never key either limiter solely on a client-supplied
+  installation id — the caller can rotate it for free. Behind a reverse
+  proxy, read the client address from the platform-set forwarding header on
+  the trusted hop, never from the request body.
+- `performConsequentialAction` reapplies the policy against current server
+  state, validates the idempotency key, authenticates the immutable request,
+  and coordinates exact transport retries before the single-use nonce
+  consume. Only the same proof fingerprint, key, digest, audience and
+  subject can replay its retained result; every changed identity must spend
+  a fresh proof. The action then runs under its logical idempotency key, so
+  the same key with different arguments is a conflict, never a second
   action. Cache keys include the verified subject and audience, so shared
   stores cannot replay another caller's result.
   Capacity exhaustion refuses new actions rather than evicting live records;

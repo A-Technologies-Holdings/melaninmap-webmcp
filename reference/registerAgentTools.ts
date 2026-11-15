@@ -248,7 +248,7 @@ const searchTool: ModelContextTool = {
     },
     required: [],
   },
-  annotations: { readOnlyHint: true },
+  annotations: { readOnlyHint: true, untrustedContentHint: true },
   execute: async (args, { signal } = {}) => {
     if (signal?.aborted) return toToolResult(CANCELLED);
     try {
@@ -287,7 +287,7 @@ const businessDetailsTool: ModelContextTool = {
     },
     required: ["externalId"],
   },
-  annotations: { readOnlyHint: true },
+  annotations: { readOnlyHint: true, untrustedContentHint: true },
   execute: async (args, { signal } = {}) => {
     if (signal?.aborted) return toToolResult(CANCELLED);
     const externalId = optionalString(args.externalId);
@@ -320,7 +320,7 @@ const verificationTool: ModelContextTool = {
     },
     required: ["externalId"],
   },
-  annotations: { readOnlyHint: true },
+  annotations: { readOnlyHint: true, untrustedContentHint: true },
   execute: async (args, { signal } = {}) => {
     if (signal?.aborted) return toToolResult(CANCELLED);
     const externalId = optionalString(args.externalId);
