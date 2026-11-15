@@ -345,6 +345,12 @@ export type IdempotencyStore = {
     fingerprint: string,
     run: () => Promise<Value>,
   ): Promise<IdempotentResult<Value>>;
+  /**
+   * Drop a settled entry before its ttl. Optional: stores without it retain
+   * every completed result until expiry. Used to release outcomes that must
+   * never occupy retained-result capacity (for example a refused retry).
+   */
+  release?(key: string): void;
 };
 
 /** In-memory `IdempotencyStore`. Same single-instance caveat as the ledger. */
@@ -388,6 +394,9 @@ export function createInMemoryIdempotencyStore(options?: {
         if (entries.get(key) === entry) entries.delete(key);
         throw error;
       }
+    },
+    release(key) {
+      entries.delete(key);
     },
   };
 }
