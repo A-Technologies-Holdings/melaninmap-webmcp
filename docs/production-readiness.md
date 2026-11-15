@@ -93,21 +93,32 @@ framework-agnostic reference:
   subject can replay its retained result; every changed identity must spend
   a fresh proof. The action then runs under its logical idempotency key, so
   the same key with different arguments is a conflict, never a second
-  action. Cache keys include the verified subject and audience, so shared
-  stores cannot replay another caller's result.
-  Capacity exhaustion refuses new actions rather than evicting live records;
-  pending actions remain deduplicated and retention starts on completion.
+  action. A rejected action may have committed, so it remains an unknown
+  outcome and the same key does not run it again. The action callback
+  receives this scoped key and must enforce it atomically in the datastore
+  transaction or downstream API that performs the consequential write.
+  Cache keys include the verified subject and audience, so shared stores
+  cannot replay another caller's result. Capacity exhaustion refuses new
+  actions rather than evicting live records; pending and unknown actions
+  remain deduplicated, and refused retry outcomes are released rather than
+  retained.
 - Every refusal is the same `403 { ok: false, error: "refused" }` to the
   client. The specific reason goes to the server log only, so the endpoint
   is not an oracle for which check a forgery passed.
 - The in-memory ledger, limiter, idempotency and authenticated-retry stores in
   `@melaninmap/webmcp-consent/server` are single-instance references. With
   more than one instance, back the same shapes with an atomic shared store
-  (Redis, Postgres, platform KV). Pass that shared retry store as
+  (Redis, Postgres, platform KV). A nonce spent on one instance must be
+  spent on all of them. Pass that shared retry store as
   `authenticatedRetries`; a nonce spent on one instance and an exact retry
   retained on another must be visible to all of them. Retain retry entries
   through the proof acceptance window so an accepted proof cannot outlive its
-  recoverable result.
+  recoverable result. The production idempotency store must durably model
+  pending, succeeded, failed-before-effect and unknown outcomes; only a
+  transactionally established failure-before-effect or reconciled unknown
+  may release a key for another attempt. The in-memory reference retains an
+  unknown until process restart and cannot provide that reconciliation, so it
+  is not an exactly-once guarantee for external writes.
 - Keep money movement and personal-data disclosure off this path entirely
   (see SECURITY.md). A consent proof authorizes one bounded operation; it
   does not prove a human was present.

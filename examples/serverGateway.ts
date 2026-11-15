@@ -21,7 +21,8 @@
  *    proof (single use, via the ledger) and running the action under an
  *    idempotency key. The exact same proof and request identity can replay a
  *    retained result, while a changed key or request must spend a fresh proof
- *    and can never act twice.
+ *    and can never act twice. Successful retries replay the first result;
+ *    rejected actions remain an unknown outcome and are not run again.
  * 3. Every refusal is the same undifferentiated 403 to the client. The
  *    specific reason goes to your server log only, so the endpoint is not
  *    an oracle for which check a forgery got past.
@@ -55,6 +56,14 @@ export type GatewayRequest = {
 };
 
 export type GatewayResponse = { status: number; body: Record<string, unknown> };
+
+export type ConsequentialActionContext = {
+  /**
+   * Gateway-scoped operation identity. Enforce this exact key atomically in
+   * the datastore transaction or downstream API that performs the action.
+   */
+  idempotencyKey: string;
+};
 
 export type GatewayAuthorizationRequest = Readonly<Pick<
   GatewayRequest,
@@ -198,7 +207,7 @@ export function createConsentGateway(options: {
   issueConsentProof(request: GatewayRequest): Promise<GatewayResponse>;
   performConsequentialAction(
     request: GatewayRequest,
-    action: (args: unknown) => Promise<unknown>,
+    action: (args: unknown, context: ConsequentialActionContext) => Promise<unknown>,
   ): Promise<GatewayResponse>;
 } {
   const ledger = options.ledger ?? createInMemoryNonceLedger();
@@ -324,15 +333,18 @@ export function createConsentGateway(options: {
           );
           if (!verification.ok) return { ok: false, reason: verification.reason };
 
+          const operationKey = JSON.stringify([
+            verification.claims.audience,
+            verification.claims.subject ?? null,
+            idempotencyKey,
+          ]);
           const result = await idempotency.execute(
-            JSON.stringify([
-              verification.claims.audience,
-              verification.claims.subject ?? null,
-              idempotencyKey,
-            ]),
+            operationKey,
             verification.claims.argsDigest,
             async () => {
-              const value = await action(authorization.operation.args);
+              const value = await action(authorization.operation.args, {
+                idempotencyKey: operationKey,
+              });
               try {
                 options.log?.({
                   type: "webmcp.consent.action",
