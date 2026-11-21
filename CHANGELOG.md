@@ -7,6 +7,12 @@ versioned path.
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-21
+
+Patch release: `schemas/melaninmap.tools.json` `version` now tracks the
+package version again (1.2.0 shipped it pinned at 1.1.0). No tool names,
+schemas, or behavior changed.
+
 ## [1.2.0] - 2026-11-15
 
 Spec alignment and security hardening across the client gate and the
